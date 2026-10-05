@@ -1,0 +1,37 @@
+{
+  "high-cpu": {
+    "description": "ad service spins 4 busy threads (adHighCpu)",
+    "flag": "adHighCpu", "on": "on",
+    "expect": [["AiraHighCpu", "ad"]]
+  },
+  "cart-failure": {
+    "description": "cart EmptyCart fails 100% of the time (cartFailure)",
+    "flag": "cartFailure", "on": "100%",
+    "expect": [["AiraOperationFailing", "cart"]]
+  },
+  "payment-failure": {
+    "description": "payment charge throws 'Invalid token' 100% of the time (paymentFailure)",
+    "flag": "paymentFailure", "on": "100%",
+    "expect": [["AiraOperationFailing", "payment"]]
+  },
+  "product-catalog-failure": {
+    "description": "product-catalog GetProduct fails for product OLJCESPC7Z (productCatalogFailure)",
+    "flag": "productCatalogFailure", "on": "on",
+    "expect": [["AiraHighErrorRate", "product-catalog"]]
+  },
+  "memory-leak": {
+    "description": "recommendation cache grows without bound (recommendationCacheFailure)",
+    "flag": "recommendationCacheFailure", "on": "on",
+    "expect": []
+  },
+  "homepage-flood": {
+    "description": "load generator floods the homepage (loadGeneratorFloodHomepage)",
+    "flag": "loadGeneratorFloodHomepage", "on": "on",
+    "expect": []
+  },
+  "service-down": {
+    "description": "recommendation container is stopped (docker stop)",
+    "container": "recommendation",
+    "expect": [["AiraServiceDown", "recommendation"]]
+  }
+}
