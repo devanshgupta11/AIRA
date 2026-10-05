@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIRA — Incident Console (mid-sem preview)</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1d2330; --muted: #677085; --border: #dfe3ea;
+    --firing: #c62828; --firing-bg: #fdecea; --resolved: #2e7d32; --resolved-bg: #e8f5e9;
+    --warn: #b26a00; --warn-bg: #fff4e0; --accent: #3654c9; --code-bg: #f0f2f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151c; --card: #1b2029; --text: #e4e8f0; --muted: #98a2b6; --border: #2c3340;
+      --firing: #ff7b72; --firing-bg: #3a1d1d; --resolved: #7ee2a8; --resolved-bg: #16301f;
+      --warn: #ffc56b; --warn-bg: #3a2c12; --accent: #8fa6ff; --code-bg: #141821;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 18px 24px; border-bottom: 1px solid var(--border); background: var(--card);
+           display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; }
+  h1 { font-size: 20px; margin: 0; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .health { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+  .pill { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+  .ok { color: var(--resolved); background: var(--resolved-bg); border-color: transparent; }
+  .bad { color: var(--firing); background: var(--firing-bg); border-color: transparent; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  .counts { color: var(--muted); margin-bottom: 14px; }
+  .incident { background: var(--card); border: 1px solid var(--border); border-left: 5px solid var(--border);
+              border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  .incident.firing { border-left-color: var(--firing); }
+  .incident.resolved { border-left-color: var(--resolved); opacity: .92; }
+  .top { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; }
+  .status { font-weight: 700; text-transform: uppercase; font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+  .status.firing { color: var(--firing); background: var(--firing-bg); }
+  .status.resolved { color: var(--resolved); background: var(--resolved-bg); }
+  .svc { font-weight: 700; font-size: 16px; }
+  .alertname { font-family: ui-monospace, Consolas, monospace; color: var(--accent); }
+  .sev { font-size: 12px; color: var(--muted); }
+  .times { color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
+  .summary { margin: 4px 0 10px; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px;
+        white-space: pre-wrap; word-break: break-word; font: 12.5px/1.5 ui-monospace, Consolas, monospace; margin: 6px 0 0; }
+  .agent { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 10px; }
+  .agent h3 { font-size: 13px; margin: 0 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .agent dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+  .agent dt { color: var(--muted); }
+  .agent dd { margin: 0; }
+  .agent .err { color: var(--firing); }
+  .agent .wait { color: var(--warn); }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 10px; }
+  @media (max-width: 600px) { .agent dl { grid-template-columns: 1fr; } header { padding: 14px 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>AIRA — Incident Console <span class="sub">(mid-sem preview)</span></h1>
+    <div class="sub">Live incidents from Prometheus → Alertmanager → AIRA. The full React dashboard comes later in the semester.</div>
+  </div>
+  <div class="health" id="health"><span class="pill">checking…</span></div>
+</header>
+<main>
+  <div class="counts" id="counts"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+<footer>Auto-refreshes every 3 seconds · <span id="updated"></span></footer>
+<script>
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = iso => iso ? new Date(iso).toLocaleString() : "";
+const dur = (a, b) => { const s = Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000);
+  return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s/60)}m ${s%60}s` : `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`; };
+
+function agentBlock(i) {
+  const st = i.agent_status;
+  if (st === "done" && i.agent_output) {
+    const o = i.agent_output;
+    const list = a => Array.isArray(a) ? a.map(esc).join("<br>") : esc(a);
+    return `<div class="agent"><h3>Triage agent · ${esc(i.agent_model)} · ${i.agent_runtime_s?.toFixed(1)}s</h3><dl>
+      <dt>Summary</dt><dd>${esc(o.summary)}</dd>
+      <dt>Affected service</dt><dd>${esc(o.affected_service)}</dd>
+      <dt>Observed symptoms</dt><dd>${list(o.observed_symptoms)}</dd>
+      <dt>Likely cause category</dt><dd>${esc(o.likely_cause_category)}</dd>
+      <dt>Next investigation</dt><dd>${list(o.suggested_next_investigation)}</dd>
+      <dt>Confidence</dt><dd>${esc(o.confidence)}</dd></dl></div>`;
+  }
+  if (st === "error") return `<div class="agent"><h3>Triage agent</h3><div class="err">Agent failed: ${esc(i.agent_error)}</div></div>`;
+  if (st === "running") return `<div class="agent"><h3>Triage agent</h3><div class="wait">Analysing evidence with ${esc(i.agent_model || "local model")}…</div></div>`;
+  if (st === "pending" && i.status === "firing") return `<div class="agent"><h3>Triage agent</h3><div class="wait">Waiting for evidence…</div></div>`;
+  return "";
+}
+
+function card(i) {
+  const resolved = i.status === "resolved";
+  return `<div class="incident ${esc(i.status)}">
+    <div class="top">
+      <span class="status ${esc(i.status)}">${esc(i.status)}</span>
+      <span class="svc">${esc(i.service || "unknown service")}</span>
+      <span class="alertname">${esc(i.alertname)}</span>
+      <span class="sev">severity: ${esc(i.severity)} · incident #${i.id}</span>
+    </div>
+    <div class="times">Started ${fmt(i.starts_at)}${resolved ? ` · Resolved ${fmt(i.ends_at)} · lasted ${dur(i.starts_at, i.ends_at)}` : ` · active for ${dur(i.starts_at)}`}</div>
+    <div class="summary">${esc(i.description || i.summary)}</div>
+    ${i.evidence_text ? `<details open><summary>Metrics evidence (live Prometheus queries)</summary><pre>${esc(i.evidence_text)}</pre></details>`
+                      : (i.status === "firing" ? `<div class="sev">Collecting metrics evidence…</div>` : "")}
+    ${agentBlock(i)}
+  </div>`;
+}
+
+async function refresh() {
+  try {
+    const r = await fetch("/incidents");
+    const items = await r.json();
+    const firing = items.filter(i => i.status === "firing").length;
+    document.getElementById("counts").textContent =
+      `${items.length} incident${items.length === 1 ? "" : "s"} · ${firing} firing · ${items.length - firing} resolved`;
+    document.getElementById("list").innerHTML = items.length ? items.map(card).join("")
+      : `<div class="empty">No incidents yet. Inject a fault and the alert will appear here.</div>`;
+    document.getElementById("updated").textContent = "last update " + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById("updated").textContent = "backend unreachable: " + e;
+  }
+}
+
+async function health() {
+  try {
+    const h = await (await fetch("/health")).json();
+    document.getElementById("health").innerHTML = Object.entries(h.checks).map(([k, v]) =>
+      `<span class="pill ${v.ok ? "ok" : "bad"}" title="${esc(v.detail)}">${k}: ${v.ok ? "up" : "down"}${k === "ollama" ? " · " + esc(v.model) : ""}</span>`).join("");
+  } catch (e) {
+    document.getElementById("health").innerHTML = `<span class="pill bad">backend unreachable</span>`;
+  }
+}
+
+refresh(); health();
+setInterval(refresh, 3000); setInterval(health, 15000);
+</script>
+</body>
+</html>
