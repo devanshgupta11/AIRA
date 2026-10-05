@@ -1,0 +1,64 @@
+# AIRA compose override, layered on top of the upstream OpenTelemetry Demo compose files:
+#   docker compose ... -f compose.yaml -f compose.full.yaml -f compose.observability.yaml \
+#                      -f compose.extras.yaml -f ../infra/compose.aira.yaml
+# Upstream files are not edited; everything AIRA adds or changes lives here.
+
+services:
+  # Upstream runs product-catalog with GOMEMLIMIT=16MiB in a 20M container. On this
+  # machine it sat at ~15.4/20 MiB with 130-190% CPU (constant Go GC) and an 800 ms median
+  # GetProduct latency (Jaeger), i.e. a degraded baseline before any fault was injected.
+  # More headroom gives a clean baseline so injected faults stand out.
+  product-catalog:
+    environment:
+      - GOMEMLIMIT=48MiB
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
+  # Prometheus: same image and flags as upstream, but loads the AIRA config
+  # (upstream config + rule_files + alerting) from /etc/aira.
+  prometheus:
+    command:
+      - --web.console.templates=/etc/prometheus/consoles
+      - --web.console.libraries=/etc/prometheus/console_libraries
+      - --storage.tsdb.retention.time=7d
+      - --config.file=/etc/aira/prometheus-config.yaml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+      - --web.route-prefix=/
+      - --web.enable-otlp-receiver
+      - --enable-feature=exemplar-storage
+    volumes:
+      - ../infra/prometheus/prometheus-config.yaml:/etc/aira/prometheus-config.yaml:ro
+      - ../infra/alert-rules.yml:/etc/aira/alert-rules.yml:ro
+      # Keep metric history across container re-creation (upstream stores it in the container layer).
+      - aira-prometheus-data:/prometheus
+    depends_on:
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    container_name: alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ../infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          memory: 100M
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+volumes:
+  aira-prometheus-data:
