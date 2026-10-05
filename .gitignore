@@ -1,0 +1,22 @@
+# Upstream demo clone (tracked by its own git repo; tag recorded in docs/environment-discovery.md)
+opentelemetry-demo/
+
+# Large / machine-local data
+docker-data/
+ollama-models/
+.cache/
+
+# Python
+**/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Runtime data
+backend/data/
+*.log
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
