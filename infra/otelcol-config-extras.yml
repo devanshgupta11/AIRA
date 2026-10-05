@@ -1,0 +1,9 @@
+# AIRA collector extras, used instead of upstream src/otel-collector/otelcol-config-extras.yml
+# via OTEL_COLLECTOR_CONFIG_EXTRAS in infra/aira.env (upstream's documented customisation seam).
+# This file is merged last, so it only needs the keys AIRA changes.
+
+connectors:
+  span_metrics:
+    # Upstream default is 60s, which makes per-service request/error/latency series too
+    # sparse for fast alerting. 15s gives several samples per minute.
+    metrics_flush_interval: 15s
