@@ -1,0 +1,90 @@
+# AIRA alert rules for the OpenTelemetry Demo.
+# Only metric names discovered in the running stack are used (docs/environment-discovery.md):
+#   traces_span_metrics_calls_total            span metrics (collector span_metrics connector, every 15s)
+#   container_cpu_usage_nanoseconds_total      docker_stats receiver, cumulative CPU time, every 10s
+#   container_memory_usage_total_bytes         docker_stats receiver, every 10s
+# Every alert carries: service_name, severity, aira_signal, plus summary/description annotations.
+
+groups:
+  - name: aira-service-health
+    interval: 15s
+    rules:
+      # Errors across all requests a service serves (server spans). Long-lived gRPC streams
+      # (*/EventStream, e.g. flagd) are excluded: they end with an error status whenever a client
+      # disconnects, which caused a false AiraOperationFailing/flagd alert on 2026-10-06.
+      # Catches faults that hit a meaningful share of a service's traffic (e.g. productCatalogFailure,
+      # paymentFailure) and the cascade into callers (checkout, frontend).
+      - alert: AiraHighErrorRate
+        expr: |
+          (
+            sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR", span_name!~".*/EventStream"}[2m]))
+            /
+            sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", span_name!~".*/EventStream"}[2m]))
+          ) > 0.05
+          and
+          sum by (service_name) (increase(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR", span_name!~".*/EventStream"}[2m])) >= 3
+        for: 30s
+        labels:
+          severity: critical
+          aira_signal: error_rate
+        annotations:
+          summary: "High error rate on {{ $labels.service_name }}"
+          description: "{{ $labels.service_name }}: {{ $value | humanizePercentage }} of server requests failed over the last 2 minutes (threshold 5%)."
+
+      # A single operation failing most of the time. Needed because some faults break one
+      # low-traffic operation (cartFailure only breaks EmptyCart, ~3% of all cart calls).
+      - alert: AiraOperationFailing
+        expr: |
+          (
+            sum by (service_name, span_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR", span_name!~".*/EventStream"}[3m]))
+            /
+            sum by (service_name, span_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", span_name!~".*/EventStream"}[3m]))
+          ) > 0.5
+          and
+          sum by (service_name, span_name) (increase(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR", span_name!~".*/EventStream"}[3m])) >= 2
+        for: 30s
+        labels:
+          severity: critical
+          aira_signal: operation_errors
+        annotations:
+          summary: "Operation {{ $labels.span_name }} failing on {{ $labels.service_name }}"
+          description: "{{ $labels.service_name }} / {{ $labels.span_name }}: {{ $value | humanizePercentage }} of calls failed over the last 3 minutes (threshold 50%)."
+
+      # Sustained container CPU, as percent of one core, from the cumulative CPU-time counter.
+      # (container_cpu_utilization_ratio is NOT used: with adHighCpu on, the counter showed ad at
+      # 3.99 cores while that gauge crept up ~2.5 points per sample, so it lags badly.)
+      # Baseline peaks were 15-50%; adHighCpu drives ad to ~400%.
+      # load-generator is excluded: it drives a headless browser and is not part of the application.
+      - alert: AiraHighCpu
+        expr: |
+          label_replace(
+            rate(container_cpu_usage_nanoseconds_total{container_name!="load-generator"}[1m]) / 1e9 * 100,
+            "service_name", "$1", "container_name", "(.*)"
+          ) > 100
+        for: 30s
+        labels:
+          severity: warning
+          aira_signal: cpu
+        annotations:
+          summary: "High CPU on {{ $labels.service_name }}"
+          description: "{{ $labels.service_name }} container used {{ $value | printf \"%.0f\" }}% CPU over the last minute (100% = one full core; threshold 100%)."
+
+      # Service stopped. Demo services push telemetry over OTLP, so there is no `up` metric.
+      # The docker_stats receiver reports every running container every 10s; a container that
+      # reported during the last 30 minutes but not during the last 45 seconds has stopped
+      # (or been removed). Limitation: after 30 minutes down the alert resolves on its own.
+      - alert: AiraServiceDown
+        expr: |
+          label_replace(
+            count by (container_name) (count_over_time(container_memory_usage_total_bytes[30m]))
+            unless
+            count by (container_name) (count_over_time(container_memory_usage_total_bytes[45s])),
+            "service_name", "$1", "container_name", "(.*)"
+          )
+        for: 15s
+        labels:
+          severity: critical
+          aira_signal: availability
+        annotations:
+          summary: "{{ $labels.service_name }} is down"
+          description: "No container metrics from {{ $labels.service_name }} for over 45 seconds, although it was running within the last 30 minutes. The container has stopped or been removed."
