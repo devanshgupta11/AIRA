@@ -40,6 +40,15 @@ mocked.
 The time-to-fire is dominated by the data: rate windows of 1–3 minutes plus a 15–30 s `for:` clause,
 on services with low traffic (payment about 0.05 req/s, cart's `EmptyCart` about 0.02 req/s).
 
+**Rule revision after these measurements (2026-10-06).** During a later rehearsal, `AiraHighErrorRate`
+was seen to flap on low-traffic services: one continuous `paymentFailure` fault produced incidents at
+12:46:54, 12:51:24 and 12:52:39, each resolving while the fault was still active. The cause was the
+`>= 3 errors` guard, which at ~0.06 req/s sits close to the roughly 7 requests a 2-minute window holds.
+The rule now uses a 3-minute window and both error rules carry `keep_firing_for: 2m`. Verified after the
+change: the same continuous fault produced exactly 2 incidents, firing without interruption for over
+13 minutes. Resolution after clearing a fault is correspondingly ~2 minutes slower, which is the
+intended trade-off.
+
 ### Triage agent (qwen2.5:7b-instruct on Ollama 0.9.6, RTX 4060 Laptop 8 GB)
 
 | Measure | Value |

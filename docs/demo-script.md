@@ -31,9 +31,13 @@ Keep one PowerShell window open in `D:\AIRA\scripts`. Close other heavy apps.
 |---|---|---|---|
 | `high-cpu` | AiraHighCpu / ad | ~72 s | ~74 s |
 | `service-down` | AiraServiceDown / recommendation | ~89 s | ~31 s |
-| `payment-failure` | AiraOperationFailing / payment (+ error rate on payment and checkout) | ~120–135 s | ~120 s |
-| `product-catalog-failure` | AiraHighErrorRate / product-catalog (frontend first, ~42 s) | ~117 s | ~90 s |
-| `cart-failure` | AiraOperationFailing / cart | ~5.5 min (don't use live) | ~30 s |
+| `payment-failure` | AiraOperationFailing / payment (+ error rate on payment and checkout) | ~90–135 s | ~3–4 min |
+| `product-catalog-failure` | AiraHighErrorRate / product-catalog (frontend first, ~42 s) | ~117 s | ~3–4 min |
+| `cart-failure` | AiraOperationFailing / cart | ~5.5 min (don't use live) | ~2.5 min |
+
+The two error rules carry `keep_firing_for: 2m` (added 2026-10-06 to stop flapping on low-traffic
+services), so they deliberately hold an incident open for two minutes after the errors stop. Start the
+next scenario while the previous one resolves in the background rather than waiting for it.
 
 Triage agent: about 7–14 s per incident once the model is warm.
 

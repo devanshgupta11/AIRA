@@ -17,19 +17,24 @@ groups:
       - alert: AiraHighErrorRate
         expr: |
           (
-            sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR", span_name!~".*/EventStream"}[2m]))
+            sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR", span_name!~".*/EventStream"}[3m]))
             /
-            sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", span_name!~".*/EventStream"}[2m]))
+            sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", span_name!~".*/EventStream"}[3m]))
           ) > 0.05
           and
-          sum by (service_name) (increase(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR", span_name!~".*/EventStream"}[2m])) >= 3
+          sum by (service_name) (increase(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR", span_name!~".*/EventStream"}[3m])) >= 3
         for: 30s
+        # Low-traffic services (payment ~0.06 req/s) saw only ~7 requests in a 2m window, so the
+        # ">= 3 errors" guard kept dropping below its threshold and the alert flapped, creating
+        # duplicate incidents for one continuous fault (observed 2026-10-06, incidents #14-#19).
+        # A 3m window holds more requests, and keep_firing_for bridges any remaining gap.
+        keep_firing_for: 2m
         labels:
           severity: critical
           aira_signal: error_rate
         annotations:
           summary: "High error rate on {{ $labels.service_name }}"
-          description: "{{ $labels.service_name }}: {{ $value | humanizePercentage }} of server requests failed over the last 2 minutes (threshold 5%)."
+          description: "{{ $labels.service_name }}: {{ $value | humanizePercentage }} of server requests failed over the last 3 minutes (threshold 5%)."
 
       # A single operation failing most of the time. Needed because some faults break one
       # low-traffic operation (cartFailure only breaks EmptyCart, ~3% of all cart calls).
@@ -43,6 +48,9 @@ groups:
           and
           sum by (service_name, span_name) (increase(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR", span_name!~".*/EventStream"}[3m])) >= 2
         for: 30s
+        # Same anti-flapping guard as above; this rule proved stable in testing, but the services it
+        # watches are the low-traffic ones, so keep it symmetric.
+        keep_firing_for: 2m
         labels:
           severity: critical
           aira_signal: operation_errors

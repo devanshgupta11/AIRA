@@ -49,8 +49,17 @@ SCHEMA_HINT = json.dumps({
 RULES = """Rules:
 - Use ONLY the facts in the alert and evidence below. Do not invent metrics, logs, deployments,
   error messages, root causes or numbers that are not present.
-- Quote measured values exactly as given. If a value is "unavailable", say it is unavailable;
-  do not guess it.
+- Copy every number character-for-character from the text above. NEVER average, round, combine or
+  recalculate them. The alert and the evidence are measured over different time windows at different
+  moments, so they legitimately disagree: that is expected, and you must not reconcile them into a
+  single figure. If you write a percentage, the exact same digits must appear in the text above.
+- When you state a number, also state where it came from, e.g. "error ratio over 2 minutes is 100.0%"
+  or "the alert reports 70% of calls failed over 3 minutes". Prefer quoting one specific measurement
+  over summarising several.
+- If a value is "unavailable", say it is unavailable; do not guess it.
+- "threshold" and "baseline" are different things and must never be swapped. The threshold is the level
+  that made the alert fire; the baseline is what this service actually measured 15-25 minutes ago.
+  Saying "higher than the baseline of <threshold>" is wrong.
 - likely_cause_category is a category suggested by the evidence, not a proven root cause.
 - Choose confidence "high" only when several independent measurements agree; "low" when the
   evidence is thin or contradictory.
@@ -78,6 +87,24 @@ def _agent() -> Agent:
     )
 
 
+def _clarify_threshold(description: str | None) -> str:
+    """Spell out what the alert's trigger level is.
+
+    Alert descriptions end with "(threshold 5%)". Sitting next to the measured error percentage,
+    that bare word was repeatedly misread by the model as the service's baseline, producing
+    "higher than the baseline of 5%" when the measured baseline was 4.3%. Naming it explicitly
+    removes the ambiguity at the source instead of relying on the prompt alone.
+    """
+    if not description:
+        return ""
+    return re.sub(
+        r"\(threshold ([^)]+)\)",
+        r"(this alert fires when the value goes above \1; that is the rule's trigger level, "
+        r"not a measurement of this service)",
+        description,
+    )
+
+
 def _incident_block(inc: dict) -> str:
     labels = {k: v for k, v in (inc.get("labels") or {}).items()}
     return (
@@ -91,7 +118,7 @@ def _incident_block(inc: dict) -> str:
         f"- severity: {inc.get('severity')}\n"
         f"- started at: {inc['starts_at']}\n"
         f"- summary: {inc.get('summary')}\n"
-        f"- description: {inc.get('description')}\n"
+        f"- description: {_clarify_threshold(inc.get('description'))}\n"
         f"- labels: {json.dumps(labels)}\n\n"
         "EVIDENCE (live Prometheus queries)\n"
         f"{inc.get('evidence_text') or 'No evidence could be collected.'}"
