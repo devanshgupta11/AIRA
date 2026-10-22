@@ -20,3 +20,11 @@ backend/data/
 Thumbs.db
 .DS_Store
 .vscode/
+node_modules
+
+*.pptx
+*.svg
+
+*.md
+docs/midsem-progress.md
+docs/demo-script.md
