@@ -5,13 +5,6 @@ of standard monitoring tools (Prometheus, Alertmanager, Grafana, Jaeger). AIRA d
 it reasons over their evidence, coordinates investigation and, later in the semester, performs
 controlled remediation.
 
-*CSE3101 Agentic AI · BML Munjal University · Batch 2023, 7th semester · Group 18:
-Devansh Gupta (230514), Deepanshu Goyal (230500), Dev Garg (230487).*
-
-> **Status: mid-semester milestone.** This milestone runs the full path from a real fault to an
-> AI-written triage summary. The Orchestrator, investigator agents, RCA, Critic, remediation,
-> verification, Qdrant memory and React dashboard come later.
-> See [docs/midsem-progress.md](docs/midsem-progress.md).
 
 ## What works today
 
