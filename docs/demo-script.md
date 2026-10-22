@@ -58,6 +58,20 @@ Triage agent: about 7–14 s per incident once the model is warm.
 * Prometheus alerts: our four rules, all green/inactive. Click one rule to show the PromQL.
 * AIRA console: empty, with health pills "prometheus: up" and "ollama: up · qwen2.5:7b-instruct".
 
+> **Note (Phase A).** This script was written when a single Triage agent produced the summary. The
+> flow is unchanged, but the console now shows a full **investigation**: an agent timeline with
+> per-agent runtimes, each investigator's findings, and any agent the Orchestrator chose to skip,
+> with its reason. Two additions worth making:
+>
+> * In scenario 1, after the triage summary, point at the **agent timeline** and say which
+>   investigators ran. On a payment fault all three run, and the **Change agent names the feature
+>   flag as the likely cause** — the strongest single moment in the demo.
+> * Use `high-cpu` as a scenario specifically to show the **Log agent greyed out as skipped**, with
+>   the reason on hover. That is the visible proof the system plans rather than following a fixed
+>   pipeline: *"It decided logs would not explain a CPU problem, and recorded why."*
+>
+> A full investigation takes 17–28 seconds, so expect a short, explainable pause after the alert.
+
 ### 2:30–6:00 Scenario 1: payment failure (feature flag)
 ```powershell
 .\inject-fault.ps1 -Scenario payment-failure

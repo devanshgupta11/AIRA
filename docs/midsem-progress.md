@@ -81,6 +81,72 @@ intended trade-off.
 | `service-down` | AiraServiceDown at ~75 s; triaged in 7.3 s as `service_unavailable`, confidence high |
 | Clear both | all alerts and incidents resolved without intervention within ~4 min |
 
+## Phase A — multi-agent investigation (added after the mid-semester milestone)
+
+The single Triage agent became a planned, five-agent investigation. Everything in the mid-semester
+pipeline above still works unchanged; this layer sits on top of it.
+
+| Component | What it does | Evidence source |
+|---|---|---|
+| **Orchestrator** | Decides which investigators this incident needs; records skips with reasons | alert `aira_signal` label + triage category |
+| **Metrics Agent** | Says which measurements are genuinely abnormal vs their own baseline | `prometheus_tool.py` |
+| **Log Agent** | Reports what the service's own log lines show, or that there are none | OpenSearch + `docker logs`, merged and de-duplicated with occurrence counts |
+| **Change Agent** | Finds the configuration change behind the incident | flagd OFREP, container restarts, image versions |
+| **Shared context** | One row per agent per incident: plan, status, findings, evidence, timing | `agent_findings` table |
+
+### Dynamic planning, measured
+
+| Fault | Alert | Investigators run | Skipped |
+|---|---|---|---|
+| `high-cpu` | AiraHighCpu / ad | metrics, change | **log** — CPU saturation is a resource problem; logs rarely explain it |
+| `payment-failure` | AiraOperationFailing / payment | metrics, log, change | – |
+| `service-down` | AiraServiceDown / recommendation | metrics, change | **log** — the service stopped logging before the incident |
+
+### Timing (measured, same laptop)
+
+| Stage | Time |
+|---|---|
+| Evidence for 3 investigators, gathered **in parallel** | 0.6–1.9 s |
+| Triage agent | 7–14 s |
+| Metrics / Log / Change agents | 6–10 / 4–7 / 5–9 s |
+| **Full investigation, end to end** | **17–28 s** (budget was 45 s) |
+
+Reasoning is serial by necessity: one local model serves every agent, and ~1.4 GB of spare VRAM
+cannot hold a second. The parallelism is in the evidence gathering, which is pure I/O.
+
+### Root causes actually identified
+
+* `high-cpu` → *"Feature flag adHighCpu is on"* — the injected flag, correctly named.
+* `payment-failure` on **checkout** → *"paymentFailure flag is set to 100% on payment service"* —
+  traced across a service boundary, because checkout calls payment. The dependency graph is read
+  from the containers' own `<NAME>_ADDR` environment variables rather than hard-coded.
+
+### Bugs found by testing, and how they were fixed
+
+| Bug | Fix |
+|---|---|
+| Metrics agent said latency "increased" when the number had fallen | Explicit direction rule; it now states RISEN / FALLEN and was re-verified on four incidents |
+| Change agent answered "no changes detected" while `paymentFailure` was at 100% | Stronger wording was not enough, so a code-level consistency check rejects the answer and forces the retry |
+| Change agent blamed a payment flag for a `cart` alert | Real dependency graph read from container environment; the agent is now told the relationship instead of guessing |
+| Metrics agent invented a baseline of "4.3%" | The number came from an example inside our own prompt. All example values are now placeholders |
+| Quote checker rejected agents citing two real evidence lines together | Each line is now verified separately; re-tested against a deliberately fabricated quote to confirm it still catches one |
+| After a stop/start cycle, 5 incidents stayed "firing" forever while Prometheus showed none | The resolved webhooks were lost while the backend was down. On startup the backend now reconciles against Alertmanager and closes any firing incident it no longer lists as active |
+| Change agent blamed a container restart and omitted the feature flag entirely | A routine stack start 13 minutes earlier was labelled a recent restart. The window was cut from 30 to 8 minutes, the wording de-emphasised, and a code check now rejects any answer that fails to mention a flag affecting this service or one it calls |
+| On the CPU alert, triage reported the 100% trigger level as grafana's "baseline" | The threshold-clarifying rewrite only matched `(threshold X)` as a whole parenthesis, so it missed `(100% = one full core; threshold 100%)`. It now matches the word wherever it appears; verified against all four alert description formats |
+
+### Verification
+
+`scripts/regression_check.py` holds **one check per bug listed above**, so none can quietly return.
+Eleven are static (prompt wording, thresholds, dependency graph, schema, the quote checker's own
+behaviour) and four call the local model to confirm agent behaviour on real data. Latest run:
+**15/15 passed**, with a fault injected so the flag-related checks could run.
+
+`scripts/check_agent_numbers.py` re-runs every agent against stored incidents and checks that no
+number and no quoted log line appears that was not in its input. It is itself tested against a
+fabricated quote, so it is not a no-op. Latest run: **16/16 clean across 4 agents and 4 incident
+types.** `scripts/verify_phase_a.py` injects real faults end to end and records the plan, runtimes
+and skips into `docs/measurements/phase-a-runs.jsonl`.
+
 ## In progress / known limitations
 
 * **Single-service view:** the agent only sees the alerting service's metrics, so cascades are labelled

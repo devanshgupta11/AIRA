@@ -3,6 +3,84 @@
 Every answer refers to what is actually built in this repository (mid-semester state, 2026-10-06).
 Measured numbers come from `docs/measurements/alert-timings.jsonl` and the backend log.
 
+## Multi-agent investigation (Phase A)
+
+**Q: How many agents are there now, and what does each do?**
+Five. **Triage** turns the alert plus metrics into a first summary and a cause category. The
+**Orchestrator** then plans which investigators to run. **Metrics** interprets the Prometheus
+evidence, **Log** reads the service's real log lines, and **Change** looks for what changed —
+feature flags, container restarts, image versions.
+
+**Q: What makes the Orchestrator agentic rather than a fixed pipeline?**
+It chooses. A CPU alert skips the Log agent, because logs rarely explain saturation; a stopped
+service skips it too, because the service stopped logging before the incident. Error alerts run all
+three. Every skipped agent is recorded with its reason and shown on the console, so the decision is
+visible rather than implied. Measured: a CPU incident ran 2 investigators, an error incident ran 3.
+
+**Q: Why is the planning logic rules rather than another LLM call?**
+Three reasons: the choice has to be explainable to you, it has to be repeatable between runs, and an
+extra model call would spend ~7 seconds of a ~25 second budget to reproduce what four rules already
+express. It becomes a model decision in the replanning phase, where the next step depends on what the
+Critic found and cannot be reduced to a table.
+
+**Q: Your synopsis says the investigators run in parallel. Do they?**
+The evidence gathering does, genuinely — Prometheus, OpenSearch, container stdout and Docker
+inspection are I/O, and three sources are fetched in 0.6–1.9 seconds concurrently. The reasoning is
+serialised, because one local model serves every agent and there is only ~1.4 GB of spare VRAM, not
+enough for a second copy. That is an honest hardware constraint, and it is why investigator outputs
+are kept terse: generation time scales with tokens.
+
+**Q: How long does a full investigation take?**
+17–28 seconds measured end to end, for triage plus two or three investigators. Each agent takes
+4–14 seconds.
+
+**Q: Can you show it finding a real root cause?**
+Yes, and the best example is a cascade. When the payment service is broken, **checkout** alerts too,
+because it calls payment. The Change agent on the *checkout* incident reports
+"paymentFailure flag is set to 100% on payment service" and marks it the likely cause — it traced the
+failure across a service boundary. It knows checkout calls payment because the dependency graph is
+read from the containers' own environment variables, not hard-coded.
+
+**Q: What stops an agent inventing a log line?**
+Three things. The prompt requires every quote to be copied exactly. The evidence states plainly when
+a service produced no logs at all, so "none" is an available answer. And
+`scripts/check_agent_numbers.py` re-runs the agents against stored incidents and verifies every
+number and every quoted line against the input — it is tested against a deliberately fabricated quote
+to prove it is not a no-op. Latest run: 16/16 clean across 4 agents and 4 incident types.
+
+**Q: Which bugs did testing catch?** (state these before being asked)
+* The Metrics agent reported latency "increased substantially" when the number had fallen. Fixed with
+  an explicit direction rule; it now says RISEN or FALLEN correctly.
+* The Change agent answered "no changes detected" while `paymentFailure` was set to 100%. Stronger
+  wording alone was not enough, so a code-level consistency check now rejects that answer and forces
+  the retry.
+* The Change agent blamed a payment flag for a cart alert. Fixed by reading the real dependency graph
+  from container environment variables, so the agent is told the relationship instead of guessing it.
+* The Metrics agent invented a baseline of "4.3%". The cause was my own prompt: it contained the
+  example `"error ratio (2m): 100.0% (baseline 4.3%)"` and the model copied the example instead of
+  the data. All example numbers are now placeholders.
+* The Change agent blamed a container restart and dropped the feature flag entirely. A routine stack
+  start 13 minutes earlier counted as "recent", so the window was cut to 8 minutes and a code check
+  now rejects any answer that omits a flag affecting this service or one it calls.
+* On the CPU alert, triage called the 100% trigger level grafana's "baseline". The clarifying rewrite
+  only matched `(threshold X)` as a whole parenthesis and missed
+  `(100% = one full core; threshold 100%)`. Now matched wherever the word appears.
+
+**Q: Has it ever caught something you did not inject?**
+Yes, three times. Grafana spikes its own CPU above one full core occasionally, with nothing injected.
+The most recent was investigated end to end by the multi-agent pipeline while unattended: Metrics
+confirmed CPU had risen to 107.2%, the Log agent was correctly skipped because logs rarely explain
+saturation, and the alert resolved itself when Grafana settled back to 2.2%. That is the system
+working on a real, unplanned incident rather than a staged one.
+
+**Q: Why two log sources?**
+Because neither covers the demo. Of 870,000 documents in OpenSearch only ~2,100 carry a service name,
+and all of them are `payment` — the rest are the collector's own debug records, and other services'
+logs are rejected upstream by a field-mapping conflict. Container stdout covers cart, recommendation
+and ad as well. Both are queried and the results de-duplicated, with occurrence counts kept because
+an error seen 66 times is stronger evidence than one seen once. `checkout` and `product-catalog`
+write nothing to either source, and the Log agent reports that honestly rather than guessing.
+
 ## Scope and novelty
 
 **Q: What exactly have you built so far?**
@@ -125,14 +203,25 @@ model serves requests sequentially. During the payment fault, four incidents (pa
 flagd) were triaged one after another in about 7 s each.
 
 **Q: What happens if the backend restarts during an incident?**
-On startup it resumes evidence collection and triage for every firing incident that hasn't finished.
-This was tested: incidents #2 and #4 were picked up after a restart.
+Two things, both tested. It resumes evidence collection and investigation for every firing incident
+that had not finished (incidents #2 and #4 were picked up after a restart). And it reconciles against
+Alertmanager: if an alert resolved while the backend was down, that webhook was lost, so the incident
+would otherwise stay "firing" forever. After one stop/start cycle five incidents were stale this way;
+the backend now closes them on startup and records why on the incident.
 
 ## Limitations (say these before being asked)
 
-* The agent sees one service's metrics only, so it cannot yet tell a dependency failure from a local
-  error. For example, frontend errors caused by product-catalog are labelled `application_error`. This is
-  exactly the gap the Orchestrator plus investigator agents will close.
+* **No RCA or Critic yet.** The investigators each report their own findings into a shared context,
+  but nothing yet combines them into ranked hypotheses or challenges the diagnosis. That is the next
+  phase, and the `round` column on `agent_findings` already exists so an agent can be re-run.
+* **The agents still cannot act.** No remediation: you clear the fault, and AIRA confirms recovery
+  from the metrics.
+* **Two services have no logs at all.** `checkout` and `product-catalog` write nothing to OpenSearch
+  or stdout, so the Log agent can only report their absence.
+* **Investigator reasoning is serial**, limited by one local model and ~1.4 GB of spare VRAM.
+* The Triage agent still sees one service's metrics only, so on its own it cannot tell a dependency
+  failure from a local error. The Change agent now closes much of that gap by tracing a flag across
+  the real dependency graph.
 * Baselines need about 25 minutes of Prometheus history; right after a fresh start they show
   "unavailable".
 * The cart scenario takes about 5.5 minutes to alert because of low traffic on the failing operation.

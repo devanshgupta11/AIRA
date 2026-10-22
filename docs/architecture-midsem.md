@@ -29,22 +29,60 @@ flowchart LR
 
     subgraph Backend["AIRA backend (FastAPI :8000, host)"]
         WH["POST /alerts<br/>(webhook receiver)"]
-        DB[("SQLite<br/>incidents + webhook log")]
-        PT["Prometheus tool<br/>(deterministic PromQL)"]
+        DB[("SQLite<br/>incidents · agent_findings · webhook log")]
         TA["CrewAI Triage Agent"]
+        ORC["Orchestrator<br/>(plans which investigators to run)"]
+        MA["Metrics Agent"]
+        LA["Log Agent"]
+        CA["Change Agent"]
         UI["GET /  Incident Console"]
     end
     AM -- "webhook via host.docker.internal" --> WH
     WH --> DB
-    WH -- "background task" --> PT
-    PT -- "live queries" --> PROM
-    PT --> TA
-    TA -- "OpenAI-compatible API" --> OLL["Ollama :11434<br/>qwen2.5:7b-instruct (local GPU)"]
-    TA -- "validated JSON (Pydantic)" --> DB
+    WH -- "background task" --> TA
+    TA -- "category + symptoms" --> ORC
+    ORC -- "evidence gathered in parallel" --> MA & LA & CA
+    MA -- "PromQL" --> PROM
+    LA -- "logs" --> OS["OpenSearch + container stdout"]
+    CA -- "flags, restarts, images" --> FLAGD
+    TA & MA & LA & CA -- "OpenAI-compatible API" --> OLL["Ollama :11434<br/>qwen2.5:7b-instruct (local GPU)"]
+    MA & LA & CA -- "validated JSON per agent" --> DB
     DB --> UI
 
     SCRIPTS["scripts/inject-fault.ps1<br/>flagctl.py"] -- "flagd-ui API / docker stop" --> FLAGD
 ```
+
+### The investigation (Phase A)
+
+After triage, the **Orchestrator** plans the investigation rather than running a fixed pipeline.
+
+| Signal on the alert | Investigators run | Skipped, and why |
+|---|---|---|
+| `error_rate`, `operation_errors` | metrics, log, change | – |
+| `cpu` (or triage says `resource_saturation`) | metrics, change | **log** — CPU saturation is a resource problem; logs rarely explain it |
+| `availability` (or `service_unavailable`) | metrics, change | **log** — the service stopped logging before the incident |
+
+Every skipped agent is stored with its reason and shown on the console, so the decision is visible
+rather than implied.
+
+Planning is deterministic rather than a further LLM call: the choice has to be explainable and
+repeatable, and an extra model call would cost ~7 s of the ~45 s budget to reproduce what four rules
+already express. It becomes a model decision in the later replanning phase, where the next step
+depends on what the Critic found and cannot be reduced to a table.
+
+**Parallel where it is free, serial where it is not.** All three investigators' evidence is gathered
+concurrently — Prometheus, OpenSearch, container stdout and Docker inspection are I/O and cost no GPU
+(measured: 0.6–1.9 s for three sources). The reasoning is then serialised, because one local model
+serves every agent and 1.4 GB of spare VRAM cannot hold a second.
+
+| Agent | Evidence source | Typical runtime |
+|---|---|---|
+| Triage | Prometheus evidence | 7–14 s |
+| Metrics | `prometheus_tool.py` | 7–10 s |
+| Log | OpenSearch + `docker logs`, merged and de-duplicated | 4–7 s |
+| Change | flagd OFREP, container restarts, image versions | 5–8 s |
+
+Measured end to end: **17–28 s** per incident for a full investigation.
 
 ### Data flow for one incident
 
@@ -83,6 +121,10 @@ flowchart LR
 | Long-lived `*/EventStream` spans excluded from error rules | They end in error when a client disconnects (caused a false flagd alert) |
 | Prometheus tool is plain Python, not an LLM tool call | Numbers must be exact and repeatable; the LLM only interprets them |
 | Agent output is JSON validated by Pydantic | A structured result can be stored, displayed and later evaluated |
+| Shared plumbing in `agents/base.py` | Every agent inherits the same number-discipline rules, JSON parsing and retry, so a prompt fix applies everywhere instead of being copied four times |
+| Agents can be given a semantic `check` that forces the retry | The schema cannot express "a flag is listed as not off, so changes_found cannot be false". Prompting alone failed that case; a real check does not |
+| Service dependencies read from container environment | Each service declares its callees as `<NAME>_ADDR` variables, so the call graph is read from the running system. Without it the Change agent blamed a payment flag for a cart alert |
+| Log evidence merges OpenSearch **and** container stdout | Neither covers the demo alone: of 870k OpenSearch documents only ~2.1k carry a service name, all `payment`; container logs cover cart, recommendation and ad as well |
 | Local model on Ollama (qwen2.5:7b-instruct, 4.7 GB) | Zero cost and private. Fits fully in 8 GB of GPU memory: about 7–10 s per triage |
 | SQLite | Single file, no extra service, enough for a prototype |
 
@@ -124,11 +166,9 @@ flowchart LR
 
 | Next step | Builds on what exists now |
 |---|---|
-| Orchestrator Agent with dynamic task selection | The Triage Agent's `suggested_next_investigation` and `likely_cause_category` become its planning input |
-| Metrics Agent | Wraps the existing Prometheus tool; adds traces from Jaeger's API |
-| Log Agent | Demo logs already go to OpenSearch; the synopsis plans Loki, to be decided |
-| Change Agent | Git history plus container image/version changes (`service_version` label) |
-| RCA + Critic Agents, with a replanning loop | Uses the shared incident context in SQLite |
+| ~~Orchestrator, Metrics, Log, Change agents~~ | **Built.** See section 1 |
+| RCA Agent | Reads the shared incident context (`agent_findings`) that the investigators now populate |
+| Critic Agent + replanning loop | The Orchestrator already records a plan per incident; replanning adds a second round, which the `round` column on `agent_findings` already allows for |
 | Remediation Agent with an allow-list (restart container, reset flag, scale) and human approval | `inject-fault`/`clear-fault` already show the reversible action primitives |
 | Verification loop | The same alert rules and Prometheus tool decide "recovered or not" |
 | Reflection / Memory with Qdrant | Stored incidents (evidence + outcome) become the retrieval corpus |

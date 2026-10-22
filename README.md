@@ -23,12 +23,21 @@ OTel Collector ──► Prometheus ──► AIRA alert rules ──► Alertma
                                                          │ webhook
                                                          ▼
                                         AIRA backend (FastAPI + SQLite)
-                                          ├─ Prometheus tool: live metrics for the service
-                                          └─ CrewAI Triage Agent on Ollama (qwen2.5:7b-instruct, local GPU)
+                                          │
+                                          ├─ Triage Agent        first summary + cause category
+                                          ├─ Orchestrator        decides WHICH investigators to run
+                                          │    ├─ Metrics Agent  Prometheus evidence
+                                          │    ├─ Log Agent      OpenSearch + container logs
+                                          │    └─ Change Agent   feature flags, restarts, versions
+                                          └─ shared incident context (every finding stored)
                                                          │
                                                          ▼
                                           Incident Console: http://localhost:8000
 ```
+
+All five agents run on one local model (qwen2.5:7b-instruct on the GPU). Evidence for the
+investigators is gathered in parallel; the reasoning is serial because a single local model serves
+them all. A full investigation takes 17–28 seconds.
 
 1. **Monitored system:** [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo) 3.1.0
    (Astronomy Shop) running locally in Docker, with Grafana, Jaeger, Prometheus, flagd and Locust.
@@ -37,11 +46,18 @@ OTel Collector ──► Prometheus ──► AIRA alert rules ──► Alertma
 3. **Detection:** four AIRA alert rules (error rate, failing operation, high CPU, service down) built only
    on metric names discovered in the running stack.
 4. **Alerting:** Alertmanager sends a webhook to the AIRA backend.
-5. **Backend:** stores each alert as an incident, queries Prometheus for the service's current
-   request rate, error ratio, p95 latency, CPU and memory, and runs the Triage Agent in the background.
+5. **Backend:** stores each alert as an incident and investigates it in the background.
 6. **Triage Agent:** a CrewAI agent on a local Ollama model writes a structured, evidence-grounded
-   summary, validated with Pydantic. It takes no actions.
-7. **Console:** a live page showing incidents, metrics evidence and the agent's summary.
+   summary, validated with Pydantic.
+7. **Orchestrator:** decides which investigators this incident needs. A CPU alert skips the Log
+   agent; an error alert runs all three. Skipped agents are recorded with their reason.
+8. **Investigators:** Metrics (Prometheus), Log (OpenSearch + container stdout, merged and
+   de-duplicated), Change (feature flags, container restarts, image versions). Their evidence is
+   gathered in parallel; each writes findings into the shared incident context.
+9. **Console:** a live page showing incidents, a per-agent timeline with runtimes, each agent's
+   findings and the evidence it used, and which agents were skipped and why.
+
+None of the agents takes any action — remediation is a later phase.
 
 Nothing on screen is mocked: every value comes from the running system.
 
@@ -57,7 +73,12 @@ D:\AIRA
 │   ├── alertmanager\alertmanager.yml
 │   ├── prometheus\prometheus-config.yaml   upstream config + rule_files + alerting
 │   └── otelcol-config-extras.yml           span metrics every 15s
-├── backend\               FastAPI app, Prometheus tool, Triage agent, console page
+├── backend\               FastAPI app and the agents
+│   └── app\
+│       ├── prometheus_tool.py · log_tool.py · change_tool.py   deterministic evidence, no LLM
+│       ├── triage_agent.py                                     first responder
+│       └── agents\        base.py (shared prompt rules, retry, validation)
+│                          orchestrator.py · metrics_agent.py · log_agent.py · change_agent.py
 ├── scripts\               start/stop/status, fault injection, measurements
 ├── docs\                  architecture, progress, demo script, viva notes, discovery
 ├── logs\                  runtime logs (not committed)
@@ -107,6 +128,25 @@ cd D:\AIRA\scripts
 .\reset-incidents.ps1    # empty the incident database (asks for confirmation; -Force to skip)
 .\stop-all.ps1           # stop backend, containers, Ollama
 ```
+
+Verification tools (both run against the real system, no mocks):
+
+```powershell
+# re-run every agent against stored incidents and check that no number or quoted log line
+# was invented. Add --agent=log to narrow it.
+D:\AIRA\backend\.venv\Scripts\python.exe check_agent_numbers.py
+
+# inject real faults end to end and record which agents were planned, run, skipped and how long
+# each took. Results append to docs\measurements\phase-a-runs.jsonl
+D:\AIRA\backend\.venv\Scripts\python.exe verify_phase_a.py
+
+# one check per bug found while building, so none can quietly come back.
+# --static skips the model calls and runs in a second.
+D:\AIRA\backend\.venv\Scripts\python.exe regression_check.py
+```
+
+Two of the regression checks only run while a fault flag is set, so for the complete suite inject a
+fault first (`.\inject-fault.ps1 -Scenario payment-failure`) and clear it afterwards.
 
 If PowerShell blocks the scripts, run them as
 `powershell -ExecutionPolicy Bypass -File .\start-all.ps1`.
