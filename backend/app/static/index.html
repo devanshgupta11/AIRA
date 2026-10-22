@@ -3,144 +3,487 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AIRA — Incident Console (mid-sem preview)</title>
+<title>AIRA — Incident Console</title>
 <style>
+  /* One accent, neutral everything else. Colour appears only where it carries meaning:
+     red for a firing incident or an identified cause, amber for a deliberate skip, green for
+     resolved. The investigation is drawn as a single vertical timeline rather than a stack of
+     bordered cards - one metaphor instead of three. */
   :root {
-    --bg: #f5f6f8; --card: #ffffff; --text: #1d2330; --muted: #677085; --border: #dfe3ea;
-    --firing: #c62828; --firing-bg: #fdecea; --resolved: #2e7d32; --resolved-bg: #e8f5e9;
-    --warn: #b26a00; --warn-bg: #fff4e0; --accent: #3654c9; --code-bg: #f0f2f6;
+    --bg:#fcfcfd; --panel:#ffffff; --sunk:#f6f7f9;
+    --line:#e8eaee; --line2:#d7dae1;
+    --ink:#101319; --ink2:#5a6170; --ink3:#9aa0ad;
+    --accent:#4a51d6; --accent-bg:#f0f1fe;
+    --red:#c0392f; --red-bg:#fdf2f1;
+    --green:#1f7a45;
+    --amber:#99700f;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #12151c; --card: #1b2029; --text: #e4e8f0; --muted: #98a2b6; --border: #2c3340;
-      --firing: #ff7b72; --firing-bg: #3a1d1d; --resolved: #7ee2a8; --resolved-bg: #16301f;
-      --warn: #ffc56b; --warn-bg: #3a2c12; --accent: #8fa6ff; --code-bg: #141821;
+    :root:not([data-theme="light"]) {
+      --bg:#0b0d11; --panel:#111419; --sunk:#171a21;
+      --line:#20242c; --line2:#2d323c;
+      --ink:#e9ebf0; --ink2:#99a0ad; --ink3:#666d7a;
+      --accent:#8d93f5; --accent-bg:#171a2e;
+      --red:#f1796a; --red-bg:#231513;
+      --green:#5ac684;
+      --amber:#d6a648;
     }
   }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  header { padding: 18px 24px; border-bottom: 1px solid var(--border); background: var(--card);
-           display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; }
-  h1 { font-size: 20px; margin: 0; }
-  .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
-  .health { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; }
-  .pill { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
-  .ok { color: var(--resolved); background: var(--resolved-bg); border-color: transparent; }
-  .bad { color: var(--firing); background: var(--firing-bg); border-color: transparent; }
-  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
-  .counts { color: var(--muted); margin-bottom: 14px; }
-  .incident { background: var(--card); border: 1px solid var(--border); border-left: 5px solid var(--border);
-              border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
-  .incident.firing { border-left-color: var(--firing); }
-  .incident.resolved { border-left-color: var(--resolved); opacity: .92; }
-  .top { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; }
-  .status { font-weight: 700; text-transform: uppercase; font-size: 12px; padding: 2px 8px; border-radius: 4px; }
-  .status.firing { color: var(--firing); background: var(--firing-bg); }
-  .status.resolved { color: var(--resolved); background: var(--resolved-bg); }
-  .svc { font-weight: 700; font-size: 16px; }
-  .alertname { font-family: ui-monospace, Consolas, monospace; color: var(--accent); }
-  .sev { font-size: 12px; color: var(--muted); }
-  .times { color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
-  .summary { margin: 4px 0 10px; }
-  details { margin-top: 8px; }
-  summary { cursor: pointer; color: var(--muted); font-weight: 600; }
-  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px;
-        white-space: pre-wrap; word-break: break-word; font: 12.5px/1.5 ui-monospace, Consolas, monospace; margin: 6px 0 0; }
-  .agent { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 10px; }
-  .agent h3 { font-size: 13px; margin: 0 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  .agent dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
-  .agent dt { color: var(--muted); }
-  .agent dd { margin: 0; }
-  .agent .err { color: var(--firing); }
-  .agent .wait { color: var(--warn); }
-  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
-  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 10px; }
-  @media (max-width: 600px) { .agent dl { grid-template-columns: 1fr; } header { padding: 14px 16px; } }
+  :root[data-theme="dark"] {
+    --bg:#0b0d11; --panel:#111419; --sunk:#171a21;
+    --line:#20242c; --line2:#2d323c;
+    --ink:#e9ebf0; --ink2:#99a0ad; --ink3:#666d7a;
+    --accent:#8d93f5; --accent-bg:#171a2e;
+    --red:#f1796a; --red-bg:#231513;
+    --green:#5ac684;
+    --amber:#d6a648;
+  }
+
+  * { box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink); display:flex; flex-direction:column;
+    font:14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+  .mono { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          font-variant-numeric:tabular-nums; }
+
+  header { display:flex; align-items:center; gap:18px; height:54px; padding:0 22px;
+           border-bottom:1px solid var(--line); background:var(--panel); flex:none; }
+  .logo { font-size:15px; font-weight:600; letter-spacing:-.02em; }
+  .logo span { color:var(--ink3); font-weight:400; margin-left:8px; font-size:13px; }
+  .hd { margin-left:auto; display:flex; align-items:center; gap:16px; }
+  .sig { display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink2); }
+  .sig i { width:6px; height:6px; border-radius:50%; background:var(--green); }
+  .sig.off i { background:var(--red); }
+  .sig.off { color:var(--red); }
+  .tbtn { background:none; border:0; color:var(--ink3); font-size:12.5px; cursor:pointer; padding:4px; }
+  .tbtn:hover { color:var(--ink); }
+
+  main { flex:1; display:grid; grid-template-columns:272px minmax(0,1fr) 316px; min-height:0; }
+  aside { border-right:1px solid var(--line); background:var(--panel); overflow-y:auto; min-height:0; }
+  .aside-h { position:sticky; top:0; z-index:2; background:var(--panel); padding:14px 20px 10px;
+             font-size:12px; color:var(--ink3); border-bottom:1px solid var(--line); }
+  .aside-h b { color:var(--ink); font-weight:600; }
+  article { overflow-y:auto; min-height:0; }
+
+  /* ---- incident list: quiet, scannable ---- */
+  .row { padding:13px 20px; cursor:pointer; border-bottom:1px solid var(--line); }
+  .row:hover { background:var(--sunk); }
+  .row.on { background:var(--accent-bg); }
+  .row-1 { display:flex; align-items:baseline; gap:8px; }
+  .st { width:6px; height:6px; border-radius:50%; background:var(--ink3); flex:none;
+        position:relative; top:-1px; }
+  .st.firing { background:var(--red); }
+  .st.resolved { background:var(--green); }
+  .row-svc { font-weight:600; font-size:14px; letter-spacing:-.01em; }
+  .row-ago { margin-left:auto; font-size:11.5px; color:var(--ink3); }
+  .row-2 { font-size:12.5px; color:var(--ink2); margin-top:1px; }
+  .bars { display:flex; gap:2px; margin-top:8px; }
+  .bars i { height:2px; flex:1; background:var(--line2); border-radius:1px; }
+  .bars i.done { background:var(--accent); }
+  .bars i.running { background:var(--accent); opacity:.4; }
+  .bars i.skipped { background:var(--amber); opacity:.35; }
+  .bars i.error { background:var(--red); }
+
+  /* ---- detail ---- */
+  .page { max-width:760px; padding:34px 40px 80px; }
+
+  /* ---- right rail: the answer first, then the numbers behind it ---- */
+  .side { border-left:1px solid var(--line); background:var(--panel); overflow-y:auto; min-height:0; }
+  .side-in { padding:26px 22px 60px; }
+  .sh { font-size:11px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
+        color:var(--ink3); margin:0 0 11px; }
+  .verdict { padding:15px 16px; border-radius:9px; background:var(--sunk); margin-bottom:28px; }
+  .verdict.found { background:var(--red-bg); }
+  .verdict p { margin:0; font-size:14.5px; line-height:1.5; font-weight:500; }
+  .verdict.found p { color:var(--red); }
+  .verdict .by { display:block; margin-top:7px; font-size:12px; color:var(--ink3); font-weight:400; }
+  .verdict.none p { color:var(--ink2); font-weight:400; font-size:13.5px; }
+
+  .sig-row { display:flex; align-items:baseline; gap:10px; padding:9px 0;
+             border-bottom:1px solid var(--line); }
+  .sig-row:last-child { border-bottom:0; }
+  .sig-k { font-size:12.5px; color:var(--ink2); flex:none; width:96px; }
+  .sig-v { font-size:14px; font-weight:600; letter-spacing:-.01em; }
+  .sig-v.hot { color:var(--red); }
+  .sig-b { margin-left:auto; font-size:11.5px; color:var(--ink3); }
+  .opbox { margin-top:14px; padding:11px 13px; border-radius:7px; background:var(--sunk); }
+  .opbox .k { font-size:11.5px; color:var(--ink3); margin-bottom:3px; }
+  .opbox .v { font-size:12.5px; word-break:break-all; }
+  .side-note { margin-top:30px; padding-top:18px; border-top:1px solid var(--line);
+               font-size:12.5px; color:var(--ink3); line-height:1.6; }
+  .side-note b { display:block; color:var(--ink2); font-weight:600; margin-bottom:4px; font-size:12.5px; }
+  .eyebrow { display:flex; align-items:center; gap:9px; font-size:12px; margin-bottom:9px; }
+  .badge { font-size:11px; font-weight:600; letter-spacing:.02em; padding:2px 8px; border-radius:20px; }
+  .badge.firing { color:var(--red); background:var(--red-bg); }
+  .badge.resolved { color:var(--green); background:var(--sunk); }
+  .eyebrow .dim { color:var(--ink3); }
+  h1 { font-size:27px; font-weight:600; letter-spacing:-.025em; margin:0 0 7px; line-height:1.2; }
+  h1 .alert { color:var(--ink3); font-weight:400; }
+  .why { font-size:14.5px; color:var(--ink2); margin:0 0 20px; max-width:62ch; }
+  .facts { font-size:12.5px; color:var(--ink3); padding-bottom:22px; border-bottom:1px solid var(--line);
+           margin-bottom:4px; }
+  .facts b { color:var(--ink2); font-weight:500; }
+  .facts span + span::before { content:"·"; margin:0 9px; color:var(--line2); }
+
+  /* ---- the timeline: one line, dots, generous space ---- */
+  .tl { position:relative; padding-left:26px; }
+  .tl::before { content:""; position:absolute; left:4px; top:26px; bottom:22px; width:1.5px;
+                background:var(--line); }
+  .ev { position:relative; padding:22px 0 4px; }
+  .ev::before { content:""; position:absolute; left:-26px; top:27px; width:9px; height:9px;
+                border-radius:50%; background:var(--line2); box-shadow:0 0 0 4px var(--bg); }
+  .ev.done::before { background:var(--accent); }
+  .ev.running::before { background:var(--accent); animation:beat 1.5s ease-in-out infinite; }
+  .ev.skipped::before { background:var(--bg); border:1.5px dashed var(--amber); width:11px; height:11px; left:-27px; }
+  .ev.error::before { background:var(--red); }
+  @keyframes beat { 0%,100%{box-shadow:0 0 0 4px var(--bg), 0 0 0 4px var(--accent-bg)}
+                    50%{box-shadow:0 0 0 4px var(--bg), 0 0 0 9px var(--accent-bg)} }
+  @media (prefers-reduced-motion: reduce) { .ev.running::before { animation:none; } }
+
+  .ev-h { display:flex; align-items:baseline; gap:10px; }
+  .ev-n { font-size:15px; font-weight:600; letter-spacing:-.015em; }
+  .ev.skipped .ev-n { color:var(--ink2); font-weight:500; }
+  .ev-t { margin-left:auto; font-size:12px; color:var(--ink3); }
+  .ev-from { font-size:12.5px; color:var(--ink3); margin-top:2px; }
+
+  .says { margin:11px 0 0; padding:0; list-style:none; }
+  .says li { position:relative; padding-left:16px; margin-bottom:10px; font-size:14px; }
+  .says li:last-child { margin-bottom:0; }
+  .says li::before { content:""; position:absolute; left:0; top:8px; width:5px; height:5px;
+                     border-radius:50%; background:var(--line2); }
+  .says li.key::before { background:var(--red); }
+  .says li.note::before { background:var(--amber); }
+  .says .q { display:block; margin-top:3px; font-size:12px; color:var(--ink3); }
+  .says .cause { color:var(--red); font-weight:600; font-size:11px; letter-spacing:.03em;
+                 text-transform:uppercase; margin-left:8px; }
+  .plain { font-size:14px; color:var(--ink2); margin-top:9px; }
+  .plain b { color:var(--ink); font-weight:600; }
+  .skipwhy { font-size:13.5px; color:var(--amber); margin-top:3px; }
+  .failwhy { font-size:13.5px; color:var(--red); margin-top:7px; }
+
+  .peek { margin-top:11px; }
+  .peek > summary { cursor:pointer; font-size:12.5px; color:var(--ink3); list-style:none;
+                    display:inline-block; }
+  .peek > summary::-webkit-details-marker { display:none; }
+  .peek > summary::before { content:"▸ "; }
+  .peek[open] > summary::before { content:"▾ "; }
+  .peek > summary:hover { color:var(--ink2); }
+  .peek pre { margin:10px 0 0; padding:14px 16px; background:var(--sunk); border-radius:7px;
+              font-size:12px; line-height:1.6; color:var(--ink2); white-space:pre-wrap;
+              word-break:break-word; max-height:280px; overflow:auto; }
+
+  .pending-note { margin-top:34px; padding-top:20px; border-top:1px solid var(--line);
+                  font-size:13px; color:var(--ink3); max-width:62ch; }
+  .pending-note b { display:block; color:var(--ink2); font-weight:600; margin-bottom:3px; }
+
+  .nothing { height:72vh; display:flex; flex-direction:column; align-items:center;
+             justify-content:center; gap:6px; color:var(--ink3); text-align:center; padding:24px; }
+  .nothing b { color:var(--ink2); font-size:15px; font-weight:600; }
+  .nothing span { font-size:13.5px; max-width:360px; line-height:1.6; }
+
+  footer { flex:none; display:flex; gap:16px; padding:9px 22px; border-top:1px solid var(--line);
+           background:var(--panel); font-size:11.5px; color:var(--ink3); }
+
+  @media (max-width:1200px) {
+    main { grid-template-columns:260px minmax(0,1fr); }
+    .side { grid-column:1 / -1; border-left:0; border-top:1px solid var(--line); overflow:visible; }
+    .side-in { padding:22px 24px 40px; max-width:760px; }
+  }
+  @media (max-width:900px) {
+    main { grid-template-columns:1fr; }
+    aside { max-height:168px; border-right:0; border-bottom:1px solid var(--line); }
+    .page { padding:24px 20px 40px; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <div>
-    <h1>AIRA — Incident Console <span class="sub">(mid-sem preview)</span></h1>
-    <div class="sub">Live incidents from Prometheus → Alertmanager → AIRA. The full React dashboard comes later in the semester.</div>
-  </div>
-  <div class="health" id="health"><span class="pill">checking…</span></div>
-</header>
-<main>
-  <div class="counts" id="counts"></div>
-  <div id="list"><div class="empty">Loading…</div></div>
-</main>
-<footer>Auto-refreshes every 3 seconds · <span id="updated"></span></footer>
-<script>
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const fmt = iso => iso ? new Date(iso).toLocaleString() : "";
-const dur = (a, b) => { const s = Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000);
-  return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s/60)}m ${s%60}s` : `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`; };
 
-function agentBlock(i) {
-  const st = i.agent_status;
-  if (st === "done" && i.agent_output) {
-    const o = i.agent_output;
-    const list = a => Array.isArray(a) ? a.map(esc).join("<br>") : esc(a);
-    return `<div class="agent"><h3>Triage agent · ${esc(i.agent_model)} · ${i.agent_runtime_s?.toFixed(1)}s</h3><dl>
-      <dt>Summary</dt><dd>${esc(o.summary)}</dd>
-      <dt>Affected service</dt><dd>${esc(o.affected_service)}</dd>
-      <dt>Observed symptoms</dt><dd>${list(o.observed_symptoms)}</dd>
-      <dt>Likely cause category</dt><dd>${esc(o.likely_cause_category)}</dd>
-      <dt>Next investigation</dt><dd>${list(o.suggested_next_investigation)}</dd>
-      <dt>Confidence</dt><dd>${esc(o.confidence)}</dd></dl></div>`;
-  }
-  if (st === "error") return `<div class="agent"><h3>Triage agent</h3><div class="err">Agent failed: ${esc(i.agent_error)}</div></div>`;
-  if (st === "running") return `<div class="agent"><h3>Triage agent</h3><div class="wait">Analysing evidence with ${esc(i.agent_model || "local model")}…</div></div>`;
-  if (st === "pending" && i.status === "firing") return `<div class="agent"><h3>Triage agent</h3><div class="wait">Waiting for evidence…</div></div>`;
-  return "";
+<header>
+  <div class="logo">AIRA<span>Incident Console</span></div>
+  <div class="hd">
+    <div class="sig" id="sig"></div>
+    <button class="tbtn" id="theme" type="button">Appearance</button>
+  </div>
+</header>
+
+<main>
+  <aside>
+    <div class="aside-h" id="asideH">Incidents</div>
+    <div id="list"></div>
+  </aside>
+  <article><div id="detail"></div></article>
+  <div class="side"><div class="side-in" id="side"></div></div>
+</main>
+
+<footer>
+  <span id="tick">connecting…</span>
+  <span style="margin-left:auto">mid-semester preview</span>
+</footer>
+
+<script>
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+
+/* Each agent, with the one-line description of what it was working from. Kept short: the timeline
+   already conveys order, so this only has to say where the evidence came from. */
+const A = {
+  triage:  { name:"Triage",       from:"the alert and live metrics for this service" },
+  plan:    { name:"Orchestrator", from:"the alert type and the triage category" },
+  metrics: { name:"Metrics",      from:"13 measurements, each against its own baseline" },
+  log:     { name:"Log",          from:"log lines from OpenSearch and container output" },
+  change:  { name:"Change",       from:"feature flags, restarts, versions, dependencies" },
+};
+const ORDER = ["triage", "plan", "metrics", "log", "change"];
+
+let selected = null, items = [], first = true;
+const open = new Set();
+document.addEventListener("toggle", e => {
+  const k = e.target instanceof HTMLDetailsElement && e.target.dataset.k;
+  if (k) e.target.open ? open.add(k) : open.delete(k);
+}, true);
+
+const root = document.documentElement;
+document.getElementById("theme").onclick = () => {
+  const cur = root.getAttribute("data-theme");
+  const next = cur === "dark" ? "light" : cur === "light" ? "" : "dark";
+  next ? root.setAttribute("data-theme", next) : root.removeAttribute("data-theme");
+  try { localStorage.setItem("aira-theme", next); } catch {}
+};
+try { const t = localStorage.getItem("aira-theme"); if (t) root.setAttribute("data-theme", t); } catch {}
+
+const clock = iso => iso ? new Date(iso).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) : "—";
+function since(a, b) {
+  if (!a) return "—";
+  const s = Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000));
+  return s < 60 ? s + "s" : s < 3600 ? Math.floor(s/60) + "m" : Math.floor(s/3600) + "h " + Math.floor(s%3600/60) + "m";
 }
 
-function card(i) {
-  const resolved = i.status === "resolved";
-  return `<div class="incident ${esc(i.status)}">
-    <div class="top">
-      <span class="status ${esc(i.status)}">${esc(i.status)}</span>
-      <span class="svc">${esc(i.service || "unknown service")}</span>
-      <span class="alertname">${esc(i.alertname)}</span>
-      <span class="sev">severity: ${esc(i.severity)} · incident #${i.id}</span>
+function stages(inc) {
+  const found = (inc.agents && inc.agents.agents) || [];
+  const by = Object.fromEntries(found.map(a => [a.agent, a]));
+  const inv = found.filter(a => a.agent !== "triage");
+  const out = [];
+  for (const k of ORDER) {
+    if (k === "plan") {
+      if (!inv.length) continue;
+      out.push({ k, plan:true, status:"done",
+        ran: inv.filter(a => a.status !== "skipped").map(a => A[a.agent]?.name || a.agent),
+        skipped: inv.filter(a => a.status === "skipped") });
+    } else if (by[k]) out.push({ k, ...by[k] });
+  }
+  return out;
+}
+
+function says(st) {
+  const o = st.output || {};
+  if (o.summary) {
+    const cat = o.likely_cause_category
+      ? `<li class="note">Classified as <b>${esc(o.likely_cause_category)}</b>, confidence ${esc(o.confidence)}</li>` : "";
+    return `<ul class="says"><li>${esc(o.summary)}</li>${cat}</ul>`;
+  }
+  const f = o.findings || [];
+  if (!f.length) return "";
+  return `<ul class="says">` + f.map(x => {
+    const cls = x.likely_cause ? "key" : (x.abnormal || x.related_to_alert) ? "note" : "";
+    const src = x.measurement || x.quoted_line || x.detail;
+    const q = (src && String(src).toLowerCase() !== "none")
+      ? `<span class="q mono">${esc(String(src).slice(0, 190))}</span>` : "";
+    return `<li class="${cls}">${esc(x.statement)}${x.likely_cause ? `<span class="cause">likely cause</span>` : ""}${q}</li>`;
+  }).join("") + `</ul>`;
+}
+
+function stageHtml(inc, st) {
+  const m = A[st.k] || { name: st.k, from: "" };
+
+  if (st.plan) {
+    const skips = st.skipped.length
+      ? st.skipped.map(s => `<li class="note">Did not run <b>${esc(A[s.agent]?.name || s.agent)}</b> — ${esc(s.skip_reason || "no reason recorded")}</li>`).join("")
+      : `<li>Every source was needed for this kind of alert</li>`;
+    return `<section class="ev done">
+      <div class="ev-h"><span class="ev-n">${m.name}</span><span class="ev-t">decided by rules</span></div>
+      <div class="ev-from">${esc(m.from)}</div>
+      <ul class="says"><li>Chose <b>${esc(st.ran.join(", ") || "nothing")}</b></li>${skips}</ul>
+    </section>`;
+  }
+
+  if (st.status === "skipped") {
+    return `<section class="ev skipped">
+      <div class="ev-h"><span class="ev-n">${m.name}</span><span class="ev-t">not run</span></div>
+      <div class="skipwhy">${esc(st.skip_reason || "no reason recorded")}</div>
+    </section>`;
+  }
+
+  if (st.status === "error") {
+    return `<section class="ev error">
+      <div class="ev-h"><span class="ev-n">${m.name}</span>
+        <span class="ev-t">${st.runtime_s ? st.runtime_s.toFixed(1) + "s" : ""}</span></div>
+      <div class="failwhy">${esc(st.error || "unknown error")}</div>
+    </section>`;
+  }
+
+  if (st.status === "running" || st.status === "pending") {
+    return `<section class="ev ${st.status}">
+      <div class="ev-h"><span class="ev-n">${m.name}</span>
+        <span class="ev-t">${st.status === "running" ? "reading the evidence…" : "waiting"}</span></div>
+      <div class="ev-from">${esc(m.from)}</div>
+    </section>`;
+  }
+
+  const k = `e-${inc.id}-${st.k}`;
+  const peek = st.evidence_preview
+    ? `<details class="peek" data-k="${esc(k)}"${open.has(k) ? " open" : ""}>
+         <summary>evidence it was given</summary><pre class="mono">${esc(st.evidence_preview)}</pre></details>` : "";
+  return `<section class="ev done">
+    <div class="ev-h"><span class="ev-n">${m.name}</span>
+      <span class="ev-t">${st.runtime_s ? st.runtime_s.toFixed(1) + "s" : ""}${st.attempts > 1 ? ` · ${st.attempts} tries` : ""}</span></div>
+    <div class="ev-from">${esc(m.from)}</div>
+    ${says(st)}${peek}
+  </section>`;
+}
+
+function detail(inc) {
+  const ag = inc.agents || { agents: [], total_runtime_s: 0 };
+  const sg = stages(inc);
+  const done = inc.status === "resolved";
+  const facts = [
+    `<span>Detected <b>${clock(inc.starts_at)}</b></span>`,
+    ag.total_runtime_s ? `<span>Investigated in <b>${ag.total_runtime_s.toFixed(1)}s</b></span>` : "",
+    done ? `<span>Resolved <b>${clock(inc.ends_at)}</b> after <b>${since(inc.starts_at, inc.ends_at)}</b></span>`
+         : `<span>Active <b>${since(inc.starts_at)}</b></span>`,
+  ].filter(Boolean).join("");
+
+  return `<div class="page">
+    <div class="eyebrow">
+      <span class="badge ${esc(inc.status)}">${done ? "Resolved" : "Firing"}</span>
+      <span class="dim">${esc(inc.severity || "")} · incident ${inc.id}</span>
     </div>
-    <div class="times">Started ${fmt(i.starts_at)}${resolved ? ` · Resolved ${fmt(i.ends_at)} · lasted ${dur(i.starts_at, i.ends_at)}` : ` · active for ${dur(i.starts_at)}`}</div>
-    <div class="summary">${esc(i.description || i.summary)}</div>
-    ${i.evidence_text ? `<details open><summary>Metrics evidence (live Prometheus queries)</summary><pre>${esc(i.evidence_text)}</pre></details>`
-                      : (i.status === "firing" ? `<div class="sev">Collecting metrics evidence…</div>` : "")}
-    ${agentBlock(i)}
+    <h1>${esc(inc.service || "unknown")} <span class="alert">${esc(inc.alertname)}</span></h1>
+    ${inc.description || inc.summary ? `<p class="why">${esc(inc.description || inc.summary)}</p>` : ""}
+    <div class="facts">${facts}</div>
+    ${sg.length ? `<div class="tl">${sg.map(s => stageHtml(inc, s)).join("")}</div>`
+      : `<p class="plain">No investigation was recorded for this incident.</p>`}
   </div>`;
+}
+
+/* ---- right rail: the conclusion first, then the measurements behind it ---- */
+const pct = v => v == null ? null : (v * 100).toFixed(v < 0.01 && v > 0 ? 2 : 1) + "%";
+const ms  = v => v == null ? null : (v >= 1000 ? (v / 1000).toFixed(1) + " s" : v.toFixed(1) + " ms");
+const mib = v => v == null ? null : (v / 1048576).toFixed(0) + " MiB";
+
+// `aside` is the complete right-hand text, so memory can say "of 140 MiB" while the rest say
+// "was 0.0%" - a baseline and a limit are different things and should not share a label.
+function sigRow(k, val, aside, hot) {
+  if (val == null) return "";
+  return `<div class="sig-row"><span class="sig-k">${esc(k)}</span>
+    <span class="sig-v${hot ? " hot" : ""} mono">${esc(val)}</span>
+    ${aside ? `<span class="sig-b mono">${esc(aside)}</span>` : ""}</div>`;
+}
+
+function sideHtml(inc) {
+  if (!inc) return "";
+  const found = (inc.agents && inc.agents.agents) || [];
+  // The cause, wherever it was found - today only the Change agent can set likely_cause.
+  let cause = null, by = null;
+  for (const a of found) {
+    const hit = (a.output?.findings || []).find(f => f.likely_cause);
+    if (hit) { cause = hit; by = A[a.agent]?.name || a.agent; break; }
+  }
+
+  const v = (inc.evidence && inc.evidence.values) || {};
+  const ops = (inc.evidence && inc.evidence.failing_operations) || [];
+  const errHot = v.error_ratio != null && v.error_ratio > 0.05;
+  const cpuHot = v.cpu_percent_of_core != null && v.cpu_percent_of_core > 100;
+
+  const was = s => s == null ? null : "was " + s;
+  const signals = [
+    sigRow("Error ratio", pct(v.error_ratio), was(pct(v.error_ratio_baseline)), errHot),
+    sigRow("Requests", v.request_rate_rps != null ? v.request_rate_rps.toFixed(3) + "/s" : null,
+           was(v.request_rate_rps_baseline != null ? v.request_rate_rps_baseline.toFixed(3) + "/s" : null)),
+    sigRow("p95 latency", ms(v.latency_p95_ms), was(ms(v.latency_p95_ms_baseline))),
+    sigRow("CPU", v.cpu_percent_of_core != null ? v.cpu_percent_of_core.toFixed(1) + "%" : null,
+           was(v.cpu_percent_of_core_baseline != null ? v.cpu_percent_of_core_baseline.toFixed(1) + "%" : null), cpuHot),
+    sigRow("Memory", mib(v.memory_bytes),
+           v.memory_limit_bytes ? "of " + mib(v.memory_limit_bytes) : null),
+  ].join("");
+
+  const opHtml = ops.length
+    ? `<div class="opbox"><div class="k">Worst failing operation</div>
+       <div class="v mono">${esc(ops[0].operation)} — ${pct(ops[0].error_ratio)}</div></div>` : "";
+
+  const verdict = cause
+    ? `<div class="verdict found"><p>${esc(cause.statement)}
+         <span class="by">identified by the ${esc(by)} agent</span></p></div>`
+    : found.length
+      ? `<div class="verdict none"><p>No configuration change explained this incident. The evidence
+           describes the symptoms, but nothing was found that caused them.</p></div>`
+      : `<div class="verdict none"><p>Not investigated.</p></div>`;
+
+  return `<h2 class="sh">What AIRA concluded</h2>${verdict}
+    ${signals ? `<h2 class="sh">Measured at the time</h2>${signals}${opHtml}` : ""}
+    <div class="side-note"><b>Still to come</b>Nothing yet reads every finding together to rank a
+      single root cause, and AIRA takes no action on its own. Combining the findings, challenging
+      them, and controlled remediation are the next phases.</div>`;
+}
+
+function listHtml() {
+  return items.map(i => {
+    const bars = ((i.agents || {}).agents || []).map(a => `<i class="${esc(a.status)}"></i>`).join("");
+    return `<div class="row${i.id === selected ? " on" : ""}" data-id="${i.id}">
+      <div class="row-1"><span class="st ${esc(i.status)}"></span>
+        <span class="row-svc">${esc(i.service || "unknown")}</span>
+        <span class="row-ago mono">${i.status === "firing" ? since(i.starts_at) : clock(i.ends_at || i.updated_at)}</span></div>
+      <div class="row-2">${esc(i.alertname)}</div>
+      ${bars ? `<div class="bars">${bars}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function paint() {
+  const a = document.querySelector("aside"), d = document.querySelector("article");
+  const as = a.scrollTop, ds = d.scrollTop;
+  document.getElementById("list").innerHTML = listHtml();
+  const sel = items.find(i => i.id === selected);
+  document.getElementById("detail").innerHTML = sel ? detail(sel)
+    : `<div class="nothing"><b>${items.length ? "Nothing selected" : "No incidents"}</b>
+       <span>${items.length ? "Choose an incident to see how it was investigated."
+         : "Nothing is firing. Inject a fault and an alert will appear here within about 90 seconds."}</span></div>`;
+  document.getElementById("side").innerHTML = sideHtml(sel);
+  document.querySelectorAll(".row").forEach(el =>
+    el.onclick = () => { selected = Number(el.dataset.id); paint(); });
+  a.scrollTop = as; d.scrollTop = ds;
 }
 
 async function refresh() {
   try {
-    const r = await fetch("/incidents");
-    const items = await r.json();
-    const firing = items.filter(i => i.status === "firing").length;
-    document.getElementById("counts").textContent =
-      `${items.length} incident${items.length === 1 ? "" : "s"} · ${firing} firing · ${items.length - firing} resolved`;
-    document.getElementById("list").innerHTML = items.length ? items.map(card).join("")
-      : `<div class="empty">No incidents yet. Inject a fault and the alert will appear here.</div>`;
-    document.getElementById("updated").textContent = "last update " + new Date().toLocaleTimeString();
-  } catch (e) {
-    document.getElementById("updated").textContent = "backend unreachable: " + e;
-  }
+    items = await (await fetch("/incidents")).json();
+    const f = items.filter(i => i.status === "firing").length;
+    document.getElementById("asideH").innerHTML =
+      `<b>${items.length}</b> total · <b>${f}</b> firing`;
+    if (first && items.length) { selected = items[0].id; first = false; }
+    if (selected && !items.some(i => i.id === selected)) selected = items.length ? items[0].id : null;
+    paint();
+    document.getElementById("tick").textContent = "updated " + new Date().toLocaleTimeString();
+  } catch { document.getElementById("tick").textContent = "backend unreachable"; }
 }
 
 async function health() {
   try {
     const h = await (await fetch("/health")).json();
-    document.getElementById("health").innerHTML = Object.entries(h.checks).map(([k, v]) =>
-      `<span class="pill ${v.ok ? "ok" : "bad"}" title="${esc(v.detail)}">${k}: ${v.ok ? "up" : "down"}${k === "ollama" ? " · " + esc(v.model) : ""}</span>`).join("");
-  } catch (e) {
-    document.getElementById("health").innerHTML = `<span class="pill bad">backend unreachable</span>`;
+    document.getElementById("sig").outerHTML =
+      `<div class="sig" id="sig">` + Object.entries(h.checks).map(([k, v]) =>
+        `<span class="sig${v.ok ? "" : " off"}" title="${esc(v.detail)}"><i></i>${esc(k)}</span>`
+      ).join(" ") + `</div>`;
+  } catch {
+    document.getElementById("sig").outerHTML = `<div class="sig off" id="sig"><i></i>offline</div>`;
   }
 }
 
 refresh(); health();
-setInterval(refresh, 3000); setInterval(health, 15000);
+setInterval(refresh, 3000);
+setInterval(health, 15000);
 </script>
 </body>
 </html>

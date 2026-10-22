@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIRA — Incident Console</title>
+<style>
+  /* Neutral slate base with one accent. Status colours are the only other hues, and each one
+     means something: red is firing, green resolved, amber a deliberate skip. */
+  :root {
+    --bg:#f7f8fa; --surface:#ffffff; --surface2:#f1f3f6; --surface3:#e9ecf1;
+    --border:#e2e5ea; --border2:#cfd4dc;
+    --text:#14161a; --text2:#525866; --text3:#878d9a;
+    --accent:#4338ca; --accent-soft:#eef0fd; --accent-line:#c7cdf7;
+    --firing:#b42318; --firing-soft:#fef3f2; --firing-line:#fecdc9;
+    --ok:#15803d; --ok-soft:#f0fdf4; --ok-line:#bbf7d0;
+    --skip:#a16207; --skip-soft:#fffbeb; --skip-line:#fde68a;
+    --shadow:0 1px 2px rgba(16,20,30,.05), 0 1px 1px rgba(16,20,30,.03);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0c0e12; --surface:#14171d; --surface2:#1a1e25; --surface3:#222731;
+      --border:#242934; --border2:#333947;
+      --text:#e8eaef; --text2:#9aa1ae; --text3:#6b7280;
+      --accent:#8b93f8; --accent-soft:#191d31; --accent-line:#2f3660;
+      --firing:#ff7b6b; --firing-soft:#241513; --firing-line:#4a2420;
+      --ok:#5bd07f; --ok-soft:#10211a; --ok-line:#1d4030;
+      --skip:#d8a641; --skip-soft:#241d10; --skip-line:#453518;
+      --shadow:0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0c0e12; --surface:#14171d; --surface2:#1a1e25; --surface3:#222731;
+    --border:#242934; --border2:#333947;
+    --text:#e8eaef; --text2:#9aa1ae; --text3:#6b7280;
+    --accent:#8b93f8; --accent-soft:#191d31; --accent-line:#2f3660;
+    --firing:#ff7b6b; --firing-soft:#241513; --firing-line:#4a2420;
+    --ok:#5bd07f; --ok-soft:#10211a; --ok-line:#1d4030;
+    --skip:#d8a641; --skip-soft:#241d10; --skip-line:#453518;
+    --shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+
+  * { box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column;
+  }
+  .mono { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          font-variant-numeric:tabular-nums; }
+
+  /* ---------------- header ---------------- */
+  header {
+    display:flex; align-items:center; gap:20px; padding:0 20px; height:52px;
+    background:var(--surface); border-bottom:1px solid var(--border); flex:none;
+  }
+  .brand { display:flex; align-items:baseline; gap:9px; }
+  .brand b { font-size:15px; letter-spacing:-.01em; }
+  .brand span { font-size:11px; color:var(--text3); }
+  .counts { display:flex; gap:16px; margin-left:auto; font-size:12.5px; color:var(--text2); }
+  .counts b { color:var(--text); font-weight:600; }
+  .health { display:flex; gap:7px; }
+  .dot { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text2);
+         padding:3px 9px; border:1px solid var(--border); border-radius:5px; background:var(--surface2); }
+  .dot i { width:6px; height:6px; border-radius:50%; background:var(--ok); flex:none; }
+  .dot.down i { background:var(--firing); }
+  .dot.down { color:var(--firing); border-color:var(--firing-line); background:var(--firing-soft); }
+  .tbtn { border:1px solid var(--border); background:var(--surface2); color:var(--text2);
+          border-radius:5px; padding:4px 9px; font-size:12px; cursor:pointer; }
+  .tbtn:hover { border-color:var(--border2); color:var(--text); }
+
+  /* ---------------- layout ---------------- */
+  main { flex:1; display:grid; grid-template-columns:304px 1fr; min-height:0; }
+  .rail { border-right:1px solid var(--border); background:var(--surface); overflow-y:auto; min-height:0; }
+  .rail-h { position:sticky; top:0; background:var(--surface); border-bottom:1px solid var(--border);
+            padding:11px 16px; font-size:11px; font-weight:600; letter-spacing:.07em;
+            text-transform:uppercase; color:var(--text3); z-index:2; }
+  .detail { overflow-y:auto; min-height:0; }
+
+  /* ---------------- incident list ---------------- */
+  .item { padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer;
+          border-left:2px solid transparent; }
+  .item:hover { background:var(--surface2); }
+  .item.sel { background:var(--accent-soft); border-left-color:var(--accent); }
+  .item-top { display:flex; align-items:center; gap:8px; margin-bottom:3px; }
+  .pip { width:7px; height:7px; border-radius:50%; flex:none; background:var(--text3); }
+  .pip.firing { background:var(--firing); }
+  .pip.resolved { background:var(--ok); }
+  .item-svc { font-weight:600; font-size:13.5px; letter-spacing:-.01em; }
+  .item-time { margin-left:auto; font-size:11px; color:var(--text3); }
+  .item-alert { font-size:12px; color:var(--text2); margin-bottom:6px; }
+  .mini { display:flex; gap:3px; }
+  .mini i { height:3px; flex:1; border-radius:2px; background:var(--surface3); }
+  .mini i.done { background:var(--accent); }
+  .mini i.running { background:var(--accent); opacity:.45; }
+  .mini i.skipped { background:var(--skip); opacity:.4; }
+  .mini i.error { background:var(--firing); }
+
+  /* ---------------- detail ---------------- */
+  .wrap { max-width:960px; padding:24px 28px 60px; }
+  .d-head { display:flex; align-items:flex-start; gap:14px; margin-bottom:4px; }
+  .tag { font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+         padding:4px 9px; border-radius:5px; flex:none; margin-top:3px; }
+  .tag.firing { color:var(--firing); background:var(--firing-soft); border:1px solid var(--firing-line); }
+  .tag.resolved { color:var(--ok); background:var(--ok-soft); border:1px solid var(--ok-line); }
+  h1 { font-size:24px; margin:0; letter-spacing:-.02em; font-weight:650; }
+  h1 em { font-style:normal; color:var(--text3); font-weight:400; }
+  .sub { color:var(--text2); font-size:13px; margin:6px 0 0; }
+  .desc { margin:14px 0 0; padding:12px 14px; background:var(--surface); border:1px solid var(--border);
+          border-radius:7px; font-size:13.5px; }
+
+  .lifecycle { display:flex; gap:0; margin:20px 0 24px; border:1px solid var(--border);
+               border-radius:7px; overflow:hidden; background:var(--surface); }
+  .lc { flex:1; padding:11px 14px; border-right:1px solid var(--border); }
+  .lc:last-child { border-right:0; }
+  .lc-k { font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--text3);
+          margin-bottom:4px; }
+  .lc-v { font-size:14px; font-weight:600; letter-spacing:-.01em; }
+  .lc-v.pending { color:var(--text3); font-weight:400; }
+
+  h2 { font-size:11.5px; font-weight:650; letter-spacing:.07em; text-transform:uppercase;
+       color:var(--text3); margin:0 0 12px; }
+
+  /* pipeline strip */
+  .pipe { display:flex; align-items:stretch; gap:0; margin-bottom:22px; border:1px solid var(--border);
+          border-radius:7px; background:var(--surface); overflow:hidden; }
+  .stage { flex:1; padding:11px 13px; border-right:1px solid var(--border); position:relative; }
+  .stage:last-child { border-right:0; }
+  .stage-n { font-size:10.5px; color:var(--text3); margin-bottom:3px; }
+  .stage-nm { font-size:13px; font-weight:600; letter-spacing:-.01em; }
+  .stage-t { font-size:11.5px; color:var(--text2); margin-top:2px; }
+  .stage.done .stage-nm { color:var(--text); }
+  .stage.running { background:var(--accent-soft); }
+  .stage.running .stage-nm { color:var(--accent); }
+  .stage.skipped .stage-nm, .stage.skipped .stage-t { color:var(--skip); }
+  .stage.skipped { background:var(--skip-soft); }
+  .stage.pending .stage-nm { color:var(--text3); }
+  .stage.error { background:var(--firing-soft); }
+  .stage.error .stage-nm { color:var(--firing); }
+  .live { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent);
+          margin-left:5px; animation:pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+  @media (prefers-reduced-motion: reduce) { .live { animation:none; } }
+
+  /* agent step */
+  .step { border:1px solid var(--border); border-radius:8px; background:var(--surface);
+          margin-bottom:12px; overflow:hidden; box-shadow:var(--shadow); }
+  .step.cause { border-color:var(--firing-line); }
+  .step.skipped { background:var(--surface2); border-style:dashed; box-shadow:none; }
+  .step-h { display:flex; align-items:center; gap:10px; padding:12px 16px;
+            border-bottom:1px solid var(--border); }
+  .step.skipped .step-h { border-bottom:0; }
+  .num { width:22px; height:22px; border-radius:6px; background:var(--surface3); color:var(--text2);
+         font-size:11.5px; font-weight:650; display:flex; align-items:center; justify-content:center; flex:none; }
+  .step.done .num { background:var(--accent); color:#fff; }
+  .step.running .num { background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-line); }
+  .step.skipped .num { background:transparent; color:var(--skip); border:1px dashed var(--skip-line); }
+  .step.error .num { background:var(--firing); color:#fff; }
+  .step-nm { font-weight:650; font-size:14px; letter-spacing:-.01em; }
+  .step-meta { margin-left:auto; font-size:11.5px; color:var(--text3); display:flex; gap:12px; }
+  .step-b { padding:14px 16px; display:grid; grid-template-columns:76px 1fr; gap:10px 14px; }
+  .lab { font-size:10.5px; font-weight:650; letter-spacing:.06em; text-transform:uppercase;
+         color:var(--text3); padding-top:2px; }
+  .val { font-size:13.5px; min-width:0; }
+  .val ul { margin:0; padding:0; list-style:none; }
+  .val li { margin:0 0 7px; padding-left:14px; position:relative; }
+  .val li:last-child { margin-bottom:0; }
+  .val li::before { content:""; position:absolute; left:0; top:8px; width:5px; height:5px;
+                    border-radius:50%; background:var(--border2); }
+  .src { display:block; color:var(--text2); font-size:12px; margin-top:3px; }
+  .chip { display:inline-block; font-size:10px; font-weight:700; letter-spacing:.05em;
+          text-transform:uppercase; padding:2px 6px; border-radius:4px; margin-right:7px;
+          vertical-align:1px; }
+  .chip.cause { color:var(--firing); background:var(--firing-soft); border:1px solid var(--firing-line); }
+  .chip.rel { color:var(--accent); background:var(--accent-soft); border:1px solid var(--accent-line); }
+  .chip.abn { color:var(--skip); background:var(--skip-soft); border:1px solid var(--skip-line); }
+  .kv { color:var(--text2); }
+  .kv b { color:var(--text); font-weight:600; }
+  .next { display:flex; align-items:center; gap:7px; padding:9px 16px; border-top:1px solid var(--border);
+          background:var(--surface2); font-size:12.5px; color:var(--text2); }
+  .next svg { flex:none; opacity:.55; }
+  .skipnote { padding:0 16px 13px 48px; font-size:12.5px; color:var(--skip); }
+  .err { color:var(--firing); font-size:13px; }
+
+  details.ev { margin-top:8px; }
+  details.ev > summary { cursor:pointer; font-size:12px; color:var(--text2); list-style:none;
+                         display:inline-flex; align-items:center; gap:5px; padding:4px 8px;
+                         border:1px solid var(--border); border-radius:5px; background:var(--surface2); }
+  details.ev > summary::-webkit-details-marker { display:none; }
+  details.ev > summary:hover { color:var(--text); border-color:var(--border2); }
+  details.ev[open] > summary { margin-bottom:8px; }
+  pre { margin:0; padding:12px 14px; background:var(--surface2); border:1px solid var(--border);
+        border-radius:6px; font-size:12px; line-height:1.55; white-space:pre-wrap;
+        word-break:break-word; color:var(--text2); max-height:300px; overflow:auto; }
+
+  .gap { border:1px dashed var(--border2); border-radius:7px; padding:13px 16px; margin-top:18px;
+         background:var(--surface2); font-size:12.5px; color:var(--text2); }
+  .gap b { color:var(--text); font-weight:600; display:block; margin-bottom:3px; font-size:13px; }
+
+  .empty { display:flex; flex-direction:column; align-items:center; justify-content:center;
+           height:70vh; color:var(--text3); gap:7px; text-align:center; padding:20px; }
+  .empty b { color:var(--text2); font-size:15px; font-weight:600; }
+  .empty span { font-size:13px; max-width:380px; }
+
+  footer { flex:none; padding:7px 20px; border-top:1px solid var(--border); background:var(--surface);
+           font-size:11.5px; color:var(--text3); display:flex; gap:14px; }
+
+  @media (max-width: 880px) {
+    main { grid-template-columns:1fr; }
+    .rail { max-height:190px; border-right:0; border-bottom:1px solid var(--border); }
+    .wrap { padding:18px 16px 40px; }
+    .lifecycle, .pipe { flex-wrap:wrap; }
+    .lc, .stage { min-width:46%; }
+    .step-b { grid-template-columns:1fr; gap:4px 0; }
+    .lab { padding-top:8px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><b>AIRA</b><span>Incident Console</span></div>
+  <div class="health" id="health"></div>
+  <div class="counts" id="counts"></div>
+  <button class="tbtn" id="theme" type="button">Theme</button>
+</header>
+
+<main>
+  <nav class="rail">
+    <div class="rail-h">Incidents</div>
+    <div id="list"></div>
+  </nav>
+  <section class="detail"><div id="detail"></div></section>
+</main>
+
+<footer>
+  <span id="tick">connecting…</span>
+  <span>refreshes every 3s</span>
+  <span style="margin-left:auto">mid-semester preview · the React dashboard comes later</span>
+</footer>
+
+<script>
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+
+/* ---- what each agent is for: shown as GOT / GAVE / HANDS TO, so the reasoning is legible ---- */
+const AGENTS = {
+  triage:  { n:1, name:"Triage",       got:"The alert, plus live metrics for the affected service",
+             next:"Orchestrator — the cause category decides which investigators are needed" },
+  plan:    { n:2, name:"Orchestrator", got:"The alert signal and the triage category",
+             next:"The selected investigators run; evidence is gathered in parallel" },
+  metrics: { n:3, name:"Metrics",      got:"13 live measurements and each one's own 15–25 min baseline",
+             next:"Shared incident context" },
+  log:     { n:4, name:"Log",          got:"Log lines from OpenSearch and container stdout, merged",
+             next:"Shared incident context" },
+  change:  { n:5, name:"Change",       got:"Feature-flag state, container restarts, image versions, dependency graph",
+             next:"Shared incident context — this is where a cause is usually named" },
+};
+const ORDER = ["triage", "plan", "metrics", "log", "change"];
+
+/* ---- state that must survive the 3s refresh ---- */
+let selectedId = null, items = [], firstPaint = true;
+const openEv = new Set();
+
+document.addEventListener("toggle", e => {
+  const k = e.target instanceof HTMLDetailsElement && e.target.dataset.key;
+  if (!k) return;
+  e.target.open ? openEv.add(k) : openEv.delete(k);
+}, true);
+
+const themeBtn = document.getElementById("theme");
+themeBtn.onclick = () => {
+  const now = document.documentElement.getAttribute("data-theme");
+  const next = now === "dark" ? "light" : now === "light" ? "" : "dark";
+  next ? document.documentElement.setAttribute("data-theme", next)
+       : document.documentElement.removeAttribute("data-theme");
+  try { localStorage.setItem("aira-theme", next); } catch {}
+};
+try { const t = localStorage.getItem("aira-theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch {}
+
+const fmt = iso => iso ? new Date(iso).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" }) : "—";
+const fmtFull = iso => iso ? new Date(iso).toLocaleString() : "—";
+function dur(a, b) {
+  if (!a) return "—";
+  const s = Math.max(0, Math.round(((b ? new Date(b) : new Date()) - new Date(a)) / 1000));
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s/60) + "m " + (s%60) + "s";
+  return Math.floor(s/3600) + "h " + Math.floor(s%3600/60) + "m";
+}
+
+/* Build the ordered step list, inserting a synthetic Orchestrator step. The plan is a real
+   decision the backend recorded as skip reasons; showing it as its own step makes that visible
+   instead of leaving it implied by a greyed-out chip. */
+function steps(inc) {
+  const found = (inc.agents && inc.agents.agents) || [];
+  const by = Object.fromEntries(found.map(a => [a.agent, a]));
+  const investigators = found.filter(a => a.agent !== "triage");
+  const out = [];
+  for (const key of ORDER) {
+    if (key === "plan") {
+      if (!investigators.length) continue;
+      const ran = investigators.filter(a => a.status !== "skipped").map(a => AGENTS[a.agent]?.name || a.agent);
+      const skipped = investigators.filter(a => a.status === "skipped");
+      out.push({ key, status:"done", synthetic:true, ran, skipped });
+    } else if (by[key]) {
+      out.push({ key, ...by[key] });
+    }
+  }
+  return out;
+}
+
+function findingsHtml(a) {
+  const o = a.output || {};
+  if (o.summary) {
+    return `<ul><li>${esc(o.summary)}</li>` +
+      (o.likely_cause_category
+        ? `<li class="kv">category <b>${esc(o.likely_cause_category)}</b> · confidence <b>${esc(o.confidence)}</b></li>` : "") +
+      `</ul>`;
+  }
+  const list = o.findings || [];
+  if (!list.length) return `<span class="kv">no findings recorded</span>`;
+  return `<ul>` + list.map(f => {
+    let chip = "";
+    if (f.likely_cause) chip = `<span class="chip cause">likely cause</span>`;
+    else if (f.related_to_alert) chip = `<span class="chip rel">related</span>`;
+    else if (f.abnormal) chip = `<span class="chip abn">abnormal</span>`;
+    const src = f.measurement || f.quoted_line || f.detail;
+    const srcHtml = (src && String(src).toLowerCase() !== "none")
+      ? `<span class="src mono">${esc(String(src).slice(0, 220))}</span>` : "";
+    return `<li>${chip}${esc(f.statement)}${srcHtml}</li>`;
+  }).join("") + `</ul>`;
+}
+
+const ARROW = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>`;
+
+function stepHtml(inc, st) {
+  const meta = AGENTS[st.key] || { n:"?", name:st.key, got:"", next:"" };
+
+  if (st.synthetic) {
+    // "Ran" and "Skipped" get their own labelled rows. Previously the skip note was an unlabelled
+    // bullet under "Decided", so "none - this alert needed every source" read as a mystery item.
+    const ranTxt = st.ran.length ? st.ran.join(", ") : "none";
+    const skipRow = st.skipped.length
+      ? `<div class="lab">Skipped</div><div class="val"><ul>` +
+        st.skipped.map(s => `<li><b>${esc(AGENTS[s.agent]?.name || s.agent)}</b> — ${esc(s.skip_reason || "no reason recorded")}</li>`).join("") +
+        `</ul></div>`
+      : `<div class="lab">Skipped</div><div class="val kv">Nothing — this kind of alert needs every source.</div>`;
+    return `<article class="step done">
+      <div class="step-h"><span class="num">${meta.n}</span><span class="step-nm">${meta.name}</span>
+        <span class="step-meta"><span>decided by rules, not a model call</span></span></div>
+      <div class="step-b">
+        <div class="lab">Got</div><div class="val kv">${esc(meta.got)}</div>
+        <div class="lab">Ran</div><div class="val"><b>${esc(ranTxt)}</b></div>
+        ${skipRow}
+      </div>
+      <div class="next">${ARROW}<span>${esc(meta.next)}</span></div>
+    </article>`;
+  }
+
+  if (st.status === "skipped") {
+    return `<article class="step skipped">
+      <div class="step-h"><span class="num">${meta.n}</span><span class="step-nm">${meta.name}</span>
+        <span class="step-meta"><span>not run</span></span></div>
+      <div class="skipnote">${esc(st.skip_reason || "no reason recorded")}</div>
+    </article>`;
+  }
+
+  if (st.status === "error") {
+    return `<article class="step error">
+      <div class="step-h"><span class="num">${meta.n}</span><span class="step-nm">${meta.name}</span>
+        <span class="step-meta"><span>${st.runtime_s ? st.runtime_s.toFixed(1) + "s" : ""}</span></span></div>
+      <div class="step-b"><div class="lab">Failed</div>
+        <div class="val err">${esc(st.error || "unknown error")}</div></div>
+    </article>`;
+  }
+
+  if (st.status === "running" || st.status === "pending") {
+    const running = st.status === "running";
+    return `<article class="step ${st.status}">
+      <div class="step-h"><span class="num">${meta.n}</span><span class="step-nm">${meta.name}</span>
+        ${running ? `<span class="live"></span>` : ""}
+        <span class="step-meta"><span>${running ? "reasoning over the evidence…" : "queued"}</span></span></div>
+      <div class="step-b"><div class="lab">Got</div><div class="val kv">${esc(meta.got)}</div></div>
+    </article>`;
+  }
+
+  const cause = (st.output?.findings || []).some(f => f.likely_cause);
+  const k = `ev-${inc.id}-${st.key}`;
+  const ev = st.evidence_preview
+    ? `<details class="ev" data-key="${esc(k)}"${openEv.has(k) ? " open" : ""}>
+         <summary>view the exact evidence this agent was given</summary>
+         <pre class="mono">${esc(st.evidence_preview)}</pre></details>` : "";
+  return `<article class="step done${cause ? " cause" : ""}">
+    <div class="step-h"><span class="num">${meta.n}</span><span class="step-nm">${meta.name}</span>
+      <span class="step-meta">
+        ${st.attempts > 1 ? `<span>${st.attempts} attempts</span>` : ""}
+        ${st.model ? `<span class="mono">${esc(st.model)}</span>` : ""}
+        <span class="mono">${st.runtime_s ? st.runtime_s.toFixed(1) + "s" : ""}</span></span></div>
+    <div class="step-b">
+      <div class="lab">Got</div><div class="val kv">${esc(meta.got)}${ev}</div>
+      <div class="lab">Concluded</div><div class="val">${findingsHtml(st)}</div>
+    </div>
+    <div class="next">${ARROW}<span>${esc(meta.next)}</span></div>
+  </article>`;
+}
+
+function detailHtml(inc) {
+  const a = inc.agents || { agents: [], running: null, total_runtime_s: 0 };
+  const st = steps(inc);
+  const resolved = inc.status === "resolved";
+  const firstStart = a.agents.map(x => x.started_at).filter(Boolean).sort()[0];
+  const lastEnd = a.agents.map(x => x.finished_at).filter(Boolean).sort().pop();
+
+  const pipe = st.length ? `<h2>Pipeline</h2><div class="pipe">` + st.map(s => {
+    const m = AGENTS[s.key] || { name: s.key };
+    const t = s.synthetic ? "plan made"
+      : s.status === "skipped" ? "skipped"
+      : s.status === "running" ? "working"
+      : s.status === "pending" ? "queued"
+      : s.status === "error" ? "failed"
+      : (s.runtime_s ? s.runtime_s.toFixed(1) + "s" : "done");
+    return `<div class="stage ${s.synthetic ? "done" : esc(s.status)}">
+      <div class="stage-n">${m.n ?? ""}</div>
+      <div class="stage-nm">${esc(m.name)}${s.status === "running" ? `<span class="live"></span>` : ""}</div>
+      <div class="stage-t mono">${esc(t)}</div></div>`;
+  }).join("") + `</div>` : "";
+
+  return `<div class="wrap">
+    <div class="d-head">
+      <span class="tag ${esc(inc.status)}">${esc(inc.status)}</span>
+      <div style="min-width:0">
+        <h1>${esc(inc.service || "unknown service")} <em>· ${esc(inc.alertname)}</em></h1>
+        <p class="sub">severity ${esc(inc.severity || "—")} · incident #${inc.id}
+          · ${resolved ? "lasted " + dur(inc.starts_at, inc.ends_at) : "active for " + dur(inc.starts_at)}</p>
+      </div>
+    </div>
+
+    ${inc.description || inc.summary ? `<p class="desc">${esc(inc.description || inc.summary)}</p>` : ""}
+
+    <div class="lifecycle">
+      <div class="lc"><div class="lc-k">Detected</div><div class="lc-v mono">${fmt(inc.starts_at)}</div></div>
+      <div class="lc"><div class="lc-k">Investigation began</div><div class="lc-v mono${firstStart ? "" : " pending"}">${firstStart ? fmt(firstStart) : "—"}</div></div>
+      <div class="lc"><div class="lc-k">Agent time</div><div class="lc-v mono${a.total_runtime_s ? "" : " pending"}">${a.total_runtime_s ? a.total_runtime_s.toFixed(1) + "s" : "—"}</div></div>
+      <div class="lc"><div class="lc-k">Resolved</div><div class="lc-v mono${resolved ? "" : " pending"}">${resolved ? fmt(inc.ends_at) : "not yet"}</div></div>
+    </div>
+
+    ${pipe}
+
+    <h2>What each agent did</h2>
+    ${st.length ? st.map(s => stepHtml(inc, s)).join("")
+      : `<div class="gap"><b>No investigation recorded</b>This incident predates the multi-agent layer, or its investigation has not started yet.</div>`}
+
+    <div class="gap"><b>Not built yet</b>Nothing reads all of these findings together and ranks a single root cause, and no action is taken automatically. Combining the findings, challenging them, and controlled remediation are the next phases.</div>
+  </div>`;
+}
+
+function listHtml() {
+  if (!items.length) return "";
+  return items.map(i => {
+    const a = i.agents || { agents: [] };
+    const mini = (a.agents || []).map(x => `<i class="${esc(x.status)}"></i>`).join("");
+    return `<div class="item${i.id === selectedId ? " sel" : ""}" data-id="${i.id}">
+      <div class="item-top">
+        <span class="pip ${esc(i.status)}"></span>
+        <span class="item-svc">${esc(i.service || "unknown")}</span>
+        <span class="item-time mono">${i.status === "firing" ? dur(i.starts_at) : fmt(incEnd(i))}</span>
+      </div>
+      <div class="item-alert">${esc(i.alertname)}</div>
+      <div class="mini">${mini}</div>
+    </div>`;
+  }).join("");
+}
+const incEnd = i => i.ends_at || i.updated_at || i.starts_at;
+
+function paint() {
+  const rail = document.querySelector(".rail"), det = document.querySelector(".detail");
+  const rs = rail.scrollTop, ds = det.scrollTop;
+
+  document.getElementById("list").innerHTML = listHtml();
+  const sel = items.find(i => i.id === selectedId);
+  document.getElementById("detail").innerHTML = sel ? detailHtml(sel)
+    : items.length
+      ? `<div class="empty"><b>Select an incident</b><span>Pick one from the list to see what each agent received, concluded and passed on.</span></div>`
+      : `<div class="empty"><b>No incidents</b><span>Nothing is firing. Inject a fault and the alert will appear here within about 90 seconds.</span></div>`;
+
+  document.querySelectorAll(".item").forEach(el =>
+    el.onclick = () => { selectedId = Number(el.dataset.id); paint(); });
+
+  rail.scrollTop = rs; det.scrollTop = ds;
+}
+
+async function refresh() {
+  try {
+    const r = await fetch("/incidents");
+    items = await r.json();
+    const firing = items.filter(i => i.status === "firing").length;
+    document.getElementById("counts").innerHTML =
+      `<span><b>${firing}</b> firing</span><span><b>${items.length - firing}</b> resolved</span>`;
+    if (firstPaint && items.length) { selectedId = items[0].id; firstPaint = false; }
+    if (selectedId && !items.some(i => i.id === selectedId)) selectedId = items.length ? items[0].id : null;
+    paint();
+    document.getElementById("tick").textContent = "updated " + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById("tick").textContent = "backend unreachable";
+  }
+}
+
+async function health() {
+  const el = document.getElementById("health");
+  try {
+    const h = await (await fetch("/health")).json();
+    el.innerHTML = Object.entries(h.checks).map(([k, v]) =>
+      `<span class="dot${v.ok ? "" : " down"}" title="${esc(v.detail)}"><i></i>${esc(k)}</span>`).join("");
+  } catch {
+    el.innerHTML = `<span class="dot down"><i></i>backend</span>`;
+  }
+}
+
+refresh(); health();
+setInterval(refresh, 3000);
+setInterval(health, 15000);
+</script>
+</body>
+</html>
