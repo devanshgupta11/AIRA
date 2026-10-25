@@ -71,13 +71,14 @@ def _agent():
     )
 
 
-def run(inc: dict, evidence: dict | None = None) -> tuple[LogResult, int, float]:
+def run(inc: dict, evidence: dict | None = None, focus: str | None = None) -> tuple[LogResult, int, float]:
     """Interpret log evidence for this incident. Returns (result, attempts, seconds)."""
     ev = evidence if evidence is not None else collect(inc.get("service"), inc["starts_at"])
     context = base.incident_block(inc, evidence_text=ev.get("text"), evidence_label="EVIDENCE (log lines)")
     prompt = (
         "Examine the logs for this incident and report what they show.\n\n"
         + context + "\n\n" + RULES
+        + base.focus_block(focus)
         + "\n\nReturn JSON with exactly these keys:\n" + SCHEMA_HINT
     )
     return base.run_agent(_agent(), prompt, SCHEMA_HINT, LogResult, context)

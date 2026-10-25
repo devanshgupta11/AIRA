@@ -75,13 +75,14 @@ def _agent():
     )
 
 
-def run(inc: dict, evidence: dict | None = None) -> tuple[MetricsResult, int, float]:
+def run(inc: dict, evidence: dict | None = None, focus: str | None = None) -> tuple[MetricsResult, int, float]:
     """Interpret Prometheus evidence for this incident. Returns (result, attempts, seconds)."""
     ev = evidence if evidence is not None else collect(inc.get("service"))
     context = base.incident_block(inc, evidence_text=ev.get("text"))
     prompt = (
         "Analyse the metrics for this incident and report which measurements are abnormal.\n\n"
         + context + "\n\n" + RULES
+        + base.focus_block(focus)
         + "\n\nReturn JSON with exactly these keys:\n" + SCHEMA_HINT
     )
     return base.run_agent(_agent(), prompt, SCHEMA_HINT, MetricsResult, context)
