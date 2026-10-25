@@ -7,6 +7,7 @@ given. Reports any invented figure.
 Usage:  python check_agent_numbers.py [incident_id ...]
 """
 
+import asyncio
 import re
 import sys
 from pathlib import Path
@@ -14,7 +15,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app import db, triage_agent  # noqa: E402
-from app.agents import change_agent, log_agent, metrics_agent  # noqa: E402
+from app.agents import (adk_base, change_agent, critic_agent, log_agent,  # noqa: E402
+                        metrics_agent, rca_agent, remediation_agent)
 from pydantic import BaseModel  # noqa: E402
 
 NUM = re.compile(r"\d+(?:\.\d+)?")
@@ -49,7 +51,62 @@ def _run_change(inc: dict):
     return source, result, attempts, seconds
 
 
-AGENTS = {"triage": _run_triage, "metrics": _run_metrics, "log": _run_log, "change": _run_change}
+def _reasoning_source(inc: dict) -> tuple[str, list[dict]]:
+    """The reasoning agents' input: what the investigators concluded, not raw evidence.
+
+    Their numbers therefore have to come from the findings block, which is what is checked here.
+    The investigators' own quotes were already verified when they ran.
+    """
+    findings = [f for f in db.get_findings(inc["id"])
+                if f["agent"] not in ("rca", "critic", "conclusion")]
+    return adk_base.findings_block(inc, findings), findings
+
+
+async def _rca(inc: dict, findings: list[dict]):
+    """Over A2A when the server is up, in-process when it is not, so this check never silently
+    depends on a second process being running. Probed inside the same loop as the call: the A2A
+    client belongs to one event loop."""
+    local = not await adk_base.a2a_available()
+    return await rca_agent.run(inc, findings, local=local)
+
+
+def _run_rca(inc: dict):
+    source, findings = _reasoning_source(inc)
+    result, attempts, seconds = asyncio.run(_rca(inc, findings))
+    return source, result, attempts, seconds
+
+
+def _run_critic(inc: dict):
+    source, findings = _reasoning_source(inc)
+    stored = next((f.get("output") for f in db.get_findings(inc["id"])
+                   if f["agent"] == "rca" and f["status"] == "done" and f.get("output")), None)
+    if stored is None:
+        rca, _, _ = asyncio.run(_rca(inc, findings))
+        stored = rca.model_dump()
+    source += "\n\n" + critic_agent._rca_block(stored)
+    result, attempts, seconds = critic_agent.run(inc, findings, stored)
+    return source, result, attempts, seconds
+
+
+def _run_remediation(inc: dict):
+    """The remediation agent reasons over the findings and the RCA, so that is its source.
+
+    It proposes only; nothing it returns is executed here. Its numbers matter for the same reason
+    the others' do: a proposal quoting a measurement that was never taken would be a fabricated
+    justification for changing a running system.
+    """
+    source, findings = _reasoning_source(inc)
+    by = {f["agent"]: f for f in db.get_findings(inc["id"])}
+    rca = (by.get("rca") or {}).get("output")
+    critic = (by.get("critic") or {}).get("output")
+    if rca:
+        source += "\n\n" + critic_agent._rca_block(rca)
+    result, attempts, seconds = remediation_agent.run(inc, findings, rca, critic)
+    return source, result, attempts, seconds
+
+
+AGENTS = {"triage": _run_triage, "metrics": _run_metrics, "log": _run_log, "change": _run_change,
+          "rca": _run_rca, "critic": _run_critic, "remediation": _run_remediation}
 
 # Fields whose value an agent must copy verbatim from its evidence. These carry text the agent
 # could otherwise fabricate outright - a log line that was never written, a change that never
@@ -112,6 +169,11 @@ def headline(model: BaseModel) -> str:
         return str(d["summary"])
     if "findings" in d:
         return " | ".join(str(f.get("statement", f)) for f in d["findings"])
+    if "verdict" in d:
+        return f"{d['verdict']}: {d.get('reasoning', '')}"
+    if "action" in d:
+        return (f"{d['action']} on {d.get('target_service')}"
+                f"{' flag=' + d['flag'] if d.get('flag') else ''}: {d.get('reasoning', '')}")
     return str(d)[:160]
 
 
