@@ -5,20 +5,6 @@ of standard monitoring tools (Prometheus, Alertmanager, Grafana, Jaeger). AIRA d
 it reasons over their evidence, coordinates investigation and, later in the semester, performs
 controlled remediation.
 
-*CSE3101 Agentic AI · BML Munjal University · Batch 2023, 7th semester · Group 18:
-Devansh Gupta (230514), Deepanshu Goyal (230500), Dev Garg (230487).*
-
-> **Status: Phase D complete (2026-10-24).** The full path from a real fault to a **verified
-> repair** runs end to end: triage, a planned investigation by three specialist agents whose
-> evidence tools are served over **MCP**, an RCA agent on **Google ADK** reached over the **A2A
-> protocol**, a **Critic** that sends the investigation back out when the evidence is thin, and a
-> **Remediation agent** that proposes one action from a fixed allowlist — which runs only when a
-> **human approves it**, is confirmed at the source, and is then checked against live metrics to
-> see whether it actually helped. Every investigation is recorded step by step through both
-> frameworks' callbacks, guarded at three layers including a demonstrated prompt-injection defence,
-> and traced across all three processes in Jaeger. Qdrant memory and the React dashboard come
-> later. See [docs/midsem-progress.md](docs/midsem-progress.md).
-
 ## What works today
 
 ```
