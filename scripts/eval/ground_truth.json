@@ -1,0 +1,253 @@
+{
+ "_": [
+  "Ground truth for the Phase E evaluation, written before any arm was run.",
+  "",
+  "These faults are injected, so the correct answer is known by construction rather than",
+  "judged after the fact. That is the only reason this evaluation can claim to be scoring",
+  "root-cause correctness at all: a cause decided after reading the output would be circular.",
+  "",
+  "SCORING RULES, fixed here so they cannot be adjusted to flatter a result:",
+  "  cause_correct       the top hypothesis contains every token in must_mention (case-",
+  "                      insensitive) AND names must_name_service. Naming the symptom, the",
+  "                      downstream service, or the wrong flag all score zero.",
+  "  remediation_correct a proposed action whose action == correct_action and whose target ==",
+  "                      correct_target. Proposing nothing when a fix exists scores zero.",
+  "  unnecessary_action  any action EXECUTED that is not the correct one. Counted separately",
+  "                      from remediation_correct because a system that acts wrongly is worse",
+  "                      than one that does not act.",
+  "  detection_s         fault injected -> incident row created.",
+  "  recovery_s          correct action executed -> the alert stops firing.",
+  "",
+  "DOWNSTREAM INCIDENTS: one injected fault raises alerts on services that merely call the",
+  "broken one. For those, the correct cause is still the upstream flag, so they share the same",
+  "ground truth and are scored with primary=false. An arm that blames the downstream service",
+  "for its own errors is wrong, and this is where a single-shot baseline is expected to fail."
+ ],
+ "scenarios": {
+  "payment-failure": {
+   "description": "payment Charge throws 'Invalid token' for every call",
+   "injection": {
+    "kind": "feature_flag",
+    "flag": "paymentFailure",
+    "value": "100%"
+   },
+   "faulty_service": "payment",
+   "expected_alerts": [
+    [
+     "AiraOperationFailing",
+     "payment"
+    ]
+   ],
+   "downstream_services": [
+    "checkout",
+    "frontend",
+    "frontend-proxy"
+   ],
+   "ground_truth": {
+    "root_cause": "The paymentFailure feature flag is enabled on the payment service, so every charge call fails.",
+    "must_mention": [
+     "paymentfailure"
+    ],
+    "must_name_service": "payment",
+    "correct_action": "reset_feature_flag",
+    "correct_target": "payment",
+    "correct_params": {
+     "flag": "paymentFailure"
+    }
+   }
+  },
+  "cart-failure": {
+   "description": "cart EmptyCart fails for every call",
+   "injection": {
+    "kind": "feature_flag",
+    "flag": "cartFailure",
+    "value": "100%"
+   },
+   "faulty_service": "cart",
+   "expected_alerts": [
+    [
+     "AiraOperationFailing",
+     "cart"
+    ]
+   ],
+   "downstream_services": [
+    "frontend",
+    "frontend-proxy"
+   ],
+   "ground_truth": {
+    "root_cause": "The cartFailure feature flag is enabled on the cart service, so EmptyCart fails.",
+    "must_mention": [
+     "cartfailure"
+    ],
+    "must_name_service": "cart",
+    "correct_action": "reset_feature_flag",
+    "correct_target": "cart",
+    "correct_params": {
+     "flag": "cartFailure"
+    }
+   }
+  },
+  "product-catalog-failure": {
+   "description": "product-catalog GetProduct fails for one product id",
+   "injection": {
+    "kind": "feature_flag",
+    "flag": "productCatalogFailure",
+    "value": "on"
+   },
+   "faulty_service": "product-catalog",
+   "expected_alerts": [
+    [
+     "AiraHighErrorRate",
+     "product-catalog"
+    ]
+   ],
+   "downstream_services": [
+    "frontend",
+    "recommendation",
+    "frontend-proxy"
+   ],
+   "ground_truth": {
+    "root_cause": "The productCatalogFailure feature flag is enabled on the product-catalog service.",
+    "must_mention": [
+     "productcatalogfailure"
+    ],
+    "must_name_service": "product-catalog",
+    "correct_action": "reset_feature_flag",
+    "correct_target": "product-catalog",
+    "correct_params": {
+     "flag": "productCatalogFailure"
+    }
+   }
+  },
+  "high-cpu": {
+   "description": "ad service spins four busy threads",
+   "injection": {
+    "kind": "feature_flag",
+    "flag": "adHighCpu",
+    "value": "on"
+   },
+   "faulty_service": "ad",
+   "expected_alerts": [
+    [
+     "AiraHighCpu",
+     "ad"
+    ]
+   ],
+   "downstream_services": [],
+   "ground_truth": {
+    "root_cause": "The adHighCpu feature flag is enabled on the ad service, which spins busy threads.",
+    "must_mention": [
+     "adhighcpu"
+    ],
+    "must_name_service": "ad",
+    "correct_action": "reset_feature_flag",
+    "correct_target": "ad",
+    "correct_params": {
+     "flag": "adHighCpu"
+    }
+   }
+  },
+  "service-down": {
+   "description": "the recommendation container is stopped outright",
+   "injection": {
+    "kind": "container_stop",
+    "container": "recommendation"
+   },
+   "faulty_service": "recommendation",
+   "expected_alerts": [
+    [
+     "AiraServiceDown",
+     "recommendation"
+    ]
+   ],
+   "downstream_services": [
+    "frontend",
+    "frontend-proxy"
+   ],
+   "ground_truth": {
+    "root_cause": "The recommendation container is not running, so the service reports no metrics and serves nothing.",
+    "must_mention": [
+     "recommendation"
+    ],
+    "must_name_service": "recommendation",
+    "requires_phrase_any": [
+     "stopped",
+     "not running",
+     "down",
+     "restart",
+     "exited",
+     "no longer reporting"
+    ],
+    "correct_action": "restart_container",
+    "correct_target": "recommendation",
+    "correct_params": {}
+   }
+  },
+  "high-latency": {
+   "description": "international shipping quotes take 10 extra seconds",
+   "injection": {
+    "kind": "feature_flag",
+    "flag": "intlShippingSlowdown",
+    "value": "10sec"
+   },
+   "faulty_service": "shipping",
+   "expected_alerts": [
+    [
+     "AiraHighLatency",
+     "shipping"
+    ]
+   ],
+   "downstream_services": [
+    "checkout",
+    "frontend"
+   ],
+   "ground_truth": {
+    "root_cause": "The intlShippingSlowdown feature flag is enabled on the shipping service, delaying every quote.",
+    "must_mention": [
+     "intlshippingslowdown"
+    ],
+    "must_name_service": "shipping",
+    "correct_action": "reset_feature_flag",
+    "correct_target": "shipping",
+    "correct_params": {
+     "flag": "intlShippingSlowdown"
+    }
+   }
+  },
+  "memory-growth": {
+   "description": "email service leaks memory on every send",
+   "injection": {
+    "kind": "feature_flag",
+    "flag": "emailMemoryLeak",
+    "value": "1000x"
+   },
+   "faulty_service": "email",
+   "expected_alerts": [
+    [
+     "AiraMemoryGrowth",
+     "email"
+    ]
+   ],
+   "downstream_services": [],
+   "ground_truth": {
+    "root_cause": "The emailMemoryLeak feature flag is enabled on the email service, so memory grows on every send.",
+    "must_mention": [
+     "emailmemoryleak"
+    ],
+    "must_name_service": "email",
+    "correct_action": "reset_feature_flag",
+    "correct_target": "email",
+    "correct_params": {
+     "flag": "emailMemoryLeak"
+    }
+   }
+  }
+ },
+ "known_threats_to_validity": [
+  "These five scenarios were written alongside the alert rules and the remediation allowlist, so the system is being tested on the fault classes it was designed around. Results are a measure of the agentic layer on known fault types, not of generalisation to unseen ones.",
+  "AiraServiceDown is the only scenario whose correct action is restart_container; the other four are all feature flags. An arm that always proposed reset_feature_flag would score 4/5 on remediation without reasoning at all, so remediation_correct is reported per scenario and never only as a mean.",
+  "The local 7B model is stochastic. Single runs are anecdotes, so every arm runs every scenario repeatedly and variance is reported rather than averaged away.",
+  "Incident memory is populated from earlier development runs of these same fault types. Full AIRA therefore starts with an advantage the baselines do not have, which is the point of the memory arm but must be stated plainly when comparing.",
+  "The latency and memory alert rules compare each service to its own level 15 minutes earlier, because this stack idles with checkout permanently at the top latency bucket and three infrastructure containers above 80% of their memory limit. A consequence is that neither rule can fire in the first 15 minutes after a cold start, and neither would catch a fault that was already present when the baseline window was recorded."
+ ]
+}
