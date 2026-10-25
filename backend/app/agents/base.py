@@ -18,6 +18,7 @@ from typing import TypeVar
 from pydantic import BaseModel, ValidationError
 
 from .. import config  # noqa: F401  (sets CrewAI telemetry env vars before crewai is imported)
+from .. import events, guardrails
 from ..config import OLLAMA_MODEL, OLLAMA_URL
 from crewai import LLM, Agent, Crew, Process, Task  # noqa: E402
 
@@ -102,6 +103,9 @@ def incident_block(inc: dict, evidence_text: str | None = None, evidence_label: 
     """
     labels = dict(inc.get("labels") or {})
     body = evidence_text if evidence_text is not None else inc.get("evidence_text")
+    # Everything below this line came from outside AIRA - alert annotations written by Prometheus,
+    # and evidence containing log lines written by application code. This is the single funnel
+    # where that text becomes a prompt, so it is where it gets fenced and defanged.
     return (
         f"{ENVIRONMENT}\n"
         "ALERT\n"
@@ -113,12 +117,63 @@ def incident_block(inc: dict, evidence_text: str | None = None, evidence_label: 
         f"- description: {clarify_threshold(inc.get('description'))}\n"
         f"- labels: {json.dumps(labels)}\n\n"
         f"{evidence_label}\n"
-        f"{body or 'No evidence could be collected.'}"
+        + (guardrails.safe_for_prompt(body, evidence_label)
+           if body else "No evidence could be collected.")
+    )
+
+
+def focus_block(focus: str | None) -> str:
+    """A specific question for a second investigation round.
+
+    When the Critic rejects an analysis it names what is missing. Re-running an investigator with
+    the same prompt would mostly reproduce its first answer, so the gap is handed to it as a
+    sharper question - that is what makes a second round worth the time it costs.
+    """
+    if not focus:
+        return ""
+    return (
+        "\n\nTHIS IS A SECOND LOOK. A reviewer judged the first analysis unsupported and asked "
+        f"specifically for:\n  {focus}\n"
+        "Answer in the same format, but prioritise that question. If the evidence still does not "
+        "address it, say so plainly rather than restating your earlier findings."
     )
 
 
 def schema_hint(shape: dict) -> str:
     return json.dumps(shape, indent=2)
+
+
+def _first_json_object(text: str) -> str | None:
+    """The first complete, balanced {...} in the text.
+
+    Spanning from the first '{' to the last '}' breaks whenever the model adds a closing remark
+    after the JSON, or emits two objects - the slice then contains trailing characters and fails to
+    parse. Larger schemas provoke that far more often. Braces inside string literals are ignored,
+    so a quoted log line containing one cannot end the object early.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth, in_string, escaped = 0, False, False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return None
 
 
 def parse(raw: str, model_cls: type[T]) -> T:
@@ -127,10 +182,10 @@ def parse(raw: str, model_cls: type[T]) -> T:
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
     if fenced:
         text = fenced.group(1).strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end == -1:
+    obj = _first_json_object(text)
+    if obj is None:
         raise ValueError("no JSON object found in the agent output")
-    return model_cls.model_validate_json(text[start:end + 1])
+    return model_cls.model_validate_json(obj)
 
 
 def kickoff(agent: Agent, description: str, hint: str) -> str:
@@ -163,7 +218,13 @@ def run_agent(agent: Agent, prompt: str, hint: str, model_cls: type[T], context:
         return result, 1, time.perf_counter() - t0
     except (ValueError, ValidationError) as e:
         error = str(e)
+        # Neither framework can report this: the answer came back fine as far as CrewAI is
+        # concerned, and it is our schema and our semantic check that rejected it.
+        events.record("aira", "output_validation_failed", ok=False,
+                      detail={"schema": model_cls.__name__, "error": events.clip(error, 600),
+                              "rejected_output": events.clip(raw, 800)})
 
+    events.record("aira", "retry_started", detail={"schema": model_cls.__name__, "attempt": 2})
     retry = (
         "Your previous answer was not valid. Problem:\n" + error[:1500] +
         "\n\nPrevious answer:\n" + raw[:3000] +
@@ -175,6 +236,11 @@ def run_agent(agent: Agent, prompt: str, hint: str, model_cls: type[T], context:
         result = parse(raw2, model_cls)
         if check:
             check(result)
+        events.record("aira", "retry_succeeded", ok=True,
+                      duration_ms=round((time.perf_counter() - t0) * 1000, 1))
         return result, 2, time.perf_counter() - t0
     except (ValueError, ValidationError) as e:
+        events.record("aira", "retry_failed", ok=False,
+                      duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+                      detail={"schema": model_cls.__name__, "error": events.clip(str(e), 600)})
         raise AgentError(f"invalid agent output after retry: {str(e)[:500]}", 2, raw2) from e
