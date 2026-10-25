@@ -1,0 +1,40 @@
+# The build context is the repository root, because the image needs backend/ and qdrant/ which
+# live in different directories. Without this file that context is 68 GB: Docker Desktop's own
+# data root was relocated to D:\AIRA\docker-data (62 GB), and the virtualenv, the model weights
+# and the uv cache account for most of the rest. The first build attempt sat on "load build
+# context" until it was killed.
+#
+# What the image actually needs is about 10 MB: the application, the requirements file, the
+# incident database and the vector store.
+
+# Docker's own storage, relocated here. Never send this anywhere.
+docker-data/
+
+# Local model weights - the image does not run Ollama.
+ollama-models/
+
+# Rebuilt inside the image from requirements.txt.
+backend/.venv/
+**/__pycache__/
+**/*.pyc
+
+# Caches: uv wheels and the fastembed model, both re-fetched during the build.
+.cache/
+
+# The monitored application. AIRA watches it; it is not part of AIRA.
+opentelemetry-demo/
+
+# Development output with no place in a deployed image.
+logs/
+.git/
+node_modules/
+*.log
+
+# Scripts and docs are not served by the backend.
+scripts/
+docs/
+deck/
+
+# Local environment files must never reach an image that gets pushed anywhere.
+.env
+*.env

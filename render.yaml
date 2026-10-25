@@ -1,0 +1,42 @@
+# Render Blueprint for the AIRA console.
+#
+# Deploys the agentic layer and the console as one Docker web service, serving the real incidents
+# this system recorded: every investigation, finding, execution trace and memory case is data AIRA
+# actually produced. Nothing on the deployed instance is synthetic.
+#
+# What is NOT deployed, and why. The 29-container OpenTelemetry demo, Prometheus, Alertmanager,
+# OpenSearch, flagd and Ollama are the system AIRA watches and the model it reasons with. Together
+# they need far more memory than a free instance has, and a GPU. So the service runs in archive
+# mode: it serves what was recorded and /health states plainly that the monitored stack is not
+# part of this deployment, rather than showing five red dependencies or claiming healthy ones it
+# does not have.
+#
+# Memory. The free instance type has 512 MB. Measured on this codebase: importing CrewAI, ADK and
+# litellm costs about 140 MB of resident memory that archive mode never uses, because there is
+# nothing here to investigate. main.py therefore skips those imports when AIRA_MODE=archive,
+# which took the process from 386 MB to 244 MB. Full mode still imports them eagerly, so a real
+# deployment pays no first-investigation latency.
+#
+# To deploy: push this repository to GitHub, then in the Render dashboard choose
+# New > Blueprint and point it at the repo. Render reads this file.
+
+services:
+  - type: web
+    name: aira-console
+    runtime: docker
+    dockerfilePath: ./deploy/Dockerfile
+    # The build context is the repository root: the image needs backend/ for the application and
+    # qdrant/ for the incident-memory store, which sit in different directories.
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: AIRA_MODE
+        value: archive
+      # Qdrant runs embedded and holds an exclusive lock on its storage directory, so this service
+      # must stay at a single instance. Two would contend for the same files and one would fail to
+      # start. This is a correctness constraint, not a cost decision.
+      - key: WEB_CONCURRENCY
+        value: "1"
