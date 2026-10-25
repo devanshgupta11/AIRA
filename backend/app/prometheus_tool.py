@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from . import http_util
 from .config import PROMETHEUS_URL
 
 SERVER = 'span_kind="SPAN_KIND_SERVER"'
@@ -78,7 +79,9 @@ def collect(service: str | None) -> dict:
         out["errors"].append("alert has no service_name label")
         return out
 
-    with httpx.Client(timeout=10) as client:
+    # Shared TLS context: building a fresh one costs ~300 ms on Windows, far more than the
+    # 13 localhost queries it is about to make. See http_util.
+    with http_util.client(timeout=10) as client:
         for name, q in _queries(service).items():
             try:
                 out["values"][name] = _scalar(client, q)
