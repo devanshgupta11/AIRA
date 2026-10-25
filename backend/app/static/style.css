@@ -1,0 +1,516 @@
+/* AIRA — shared design system for the three console pages.
+ *
+ * Dark graphite is the primary theme: an incident console is read for long stretches in a dim
+ * room, and the surfaces here are near-neutral so that the only saturated colour on screen is
+ * carrying meaning. Light is available as an explicit override, not a system preference, because
+ * the palette below is the one the interface is designed around.
+ *
+ * Colour is load-bearing and never decorative:
+ *   accent (cyan)  interactive, and the Metrics agent
+ *   green          resolved, succeeded, confirmed
+ *   amber          waiting on a human, degraded, re-asked
+ *   red            firing, failed, refused
+ *   blue/purple    investigation and reasoning, by agent category
+ */
+
+:root {
+  --bg:        #0B0F14;   /* the page */
+  --nav:       #10161D;   /* top bar, and the incident list beside it */
+  --panel:     #151D27;   /* a card */
+  --panel-2:   #1B2633;   /* a card raised above a card */
+  --sunk:      #0E141B;   /* a well: code, evidence, anything inset */
+  --line:      #293544;
+  --line-2:    #3A4859;
+
+  --ink:       #F3F6FA;
+  --ink-2:     #9AA8B8;
+  --ink-3:     #6B7A8C;
+
+  --accent:    #42D6C5;
+  --accent-2:  #67E3D4;
+  --accent-bg: rgba(66, 214, 197, .13);
+
+  --green:     #4ADE80;
+  --green-bg:  rgba(74, 222, 128, .13);
+  --red:       #F87171;
+  --red-bg:    rgba(248, 113, 113, .13);
+  --amber:     #FBBF24;
+  --amber-bg:  rgba(251, 191, 36, .13);
+  --blue:      #60A5FA;
+  --blue-bg:   rgba(96, 165, 250, .13);
+  --purple:    #A78BFA;
+  --purple-bg: rgba(167, 139, 250, .13);
+  --indigo:    #818CF8;
+  --orange:    #FB923C;
+
+  /* One colour per agent category, so the same agent is the same colour on every page and in
+     every round. Read in pipeline order these run cool, then warm, then cool again: gathering
+     evidence, then reasoning about it. */
+  --ag-triage:      var(--blue);
+  --ag-plan:        var(--ink-2);
+  --ag-metrics:     var(--accent);
+  --ag-log:         var(--amber);
+  --ag-change:      var(--orange);
+  --ag-rca:         var(--purple);
+  --ag-critic:      var(--indigo);
+  --ag-remediation: var(--green);
+  --ag-conclusion:  var(--ink-2);
+
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+
+  --radius: 10px;
+  --radius-s: 7px;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .34);
+  --shadow-lift: 0 6px 20px rgba(0, 0, 0, .40), 0 1px 2px rgba(0, 0, 0, .30);
+  --nav-h: 54px;
+
+  color-scheme: dark;
+}
+
+/* The light theme is a deliberate choice by the reader, so it is keyed to the attribute alone and
+   not to prefers-color-scheme: a reader who has not chosen gets the primary theme. */
+:root[data-theme="light"] {
+  --bg:        #F6F7F9;
+  --nav:       #FFFFFF;
+  --panel:     #FFFFFF;
+  --panel-2:   #FAFBFC;
+  --sunk:      #F1F3F5;
+  --line:      #E3E6EA;
+  --line-2:    #CBD1D8;
+
+  --ink:       #11181F;
+  --ink-2:     #4D5A68;
+  --ink-3:     #7D8894;
+
+  --accent:    #0C8578;
+  --accent-2:  #0A6E63;
+  --accent-bg: rgba(12, 133, 120, .10);
+
+  --green:     #15803D;
+  --green-bg:  rgba(21, 128, 61, .10);
+  --red:       #C0392B;
+  --red-bg:    rgba(192, 57, 43, .09);
+  --amber:     #92610A;
+  --amber-bg:  rgba(146, 97, 10, .11);
+  --blue:      #2563EB;
+  --blue-bg:   rgba(37, 99, 235, .09);
+  --purple:    #6D47C9;
+  --purple-bg: rgba(109, 71, 201, .09);
+  --indigo:    #4F55C4;
+  --orange:    #B45309;
+
+  --shadow: 0 1px 2px rgba(17, 24, 31, .06), 0 1px 1px rgba(17, 24, 31, .03);
+  --shadow-lift: 0 6px 18px rgba(17, 24, 31, .10), 0 1px 2px rgba(17, 24, 31, .05);
+
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, .mono { font-family: var(--mono); }
+
+/* One visible focus treatment for everything, so keyboard navigation is never invisible. */
+:where(a, button, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------------------------------------------------------------- top bar */
+
+.nav {
+  height: var(--nav-h);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 18px;
+  background: var(--nav);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.brand { display: flex; align-items: baseline; gap: 9px; margin-right: 2px; }
+.brand b { font-size: 15.5px; font-weight: 680; letter-spacing: -.02em; }
+.brand span { font-size: 11.5px; color: var(--ink-3); }
+
+.tabs { display: flex; gap: 2px; }
+.tab {
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  padding: 7px 13px;
+  border-radius: var(--radius-s);
+  border: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .12s, color .12s;
+}
+.tab:hover { background: var(--panel-2); color: var(--ink); text-decoration: none; }
+.tab.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+
+.nav-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+/* ---------------------------------------------------------------- system health
+ *
+ * One control, not a row of badges. The summary is the only part that earns space in the top bar
+ * all day; the per-dependency detail is one click away, because it is only wanted when the
+ * summary says something is wrong.
+ */
+.health { position: relative; }
+
+.health-sum {
+  font: inherit;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 12px 5px 10px;
+  cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+.health-sum:hover { border-color: var(--line-2); color: var(--ink); }
+.health-sum i {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+  background: var(--green);
+  box-shadow: 0 0 0 3px var(--green-bg);
+}
+.health-sum.warn i { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-bg); }
+.health-sum.bad  i { background: var(--red);   box-shadow: 0 0 0 3px var(--red-bg); }
+.health-sum.warn { color: var(--amber); border-color: var(--amber); }
+.health-sum.bad  { color: var(--red);   border-color: var(--red); }
+.health-sum b { font-weight: 600; }
+
+.health-pop {
+  position: absolute;
+  right: 0; top: calc(100% + 9px);
+  width: 320px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lift);
+  padding: 7px;
+  z-index: 40;
+}
+.health-pop[hidden] { display: none; }
+.health-row {
+  display: flex; align-items: baseline; gap: 9px;
+  padding: 7px 9px; border-radius: var(--radius-s);
+  font-size: 12.5px;
+}
+.health-row:hover { background: var(--panel); }
+.health-row i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex: none;
+                transform: translateY(-2px); }
+.health-row.bad i { background: var(--red); }
+.health-row b { font-weight: 600; color: var(--ink); min-width: 92px; }
+.health-row span { color: var(--ink-3); font-size: 11.5px; text-align: right; margin-left: auto; }
+.health-row.bad span { color: var(--red); }
+
+/* ---------------------------------------------------------------- controls */
+
+.btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-s);
+  padding: 8px 15px;
+  cursor: pointer;
+  border: 1px solid var(--line-2);
+  background: var(--panel-2);
+  color: var(--ink);
+  transition: background .12s, border-color .12s, color .12s;
+}
+.btn:hover:not(:disabled) { border-color: var(--ink-3); background: var(--panel); }
+.btn:disabled { opacity: .45; cursor: default; }
+
+/* Primary: the one control on a page that moves the work forward. */
+.btn.primary, .btn.approve {
+  background: var(--accent); border-color: var(--accent); color: #06231F; font-weight: 650;
+}
+.btn.primary:hover:not(:disabled), .btn.approve:hover:not(:disabled) {
+  background: var(--accent-2); border-color: var(--accent-2);
+}
+/* Declining is reversible but consequential, so it reads as a real choice, not a cancel link. */
+.btn.quiet, .btn.reject { background: transparent; border-color: var(--line-2); color: var(--ink-2); }
+.btn.quiet:hover:not(:disabled), .btn.reject:hover:not(:disabled) {
+  color: var(--red); border-color: var(--red); background: var(--red-bg);
+}
+
+.icon-btn {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+.icon-btn:hover { border-color: var(--line-2); color: var(--ink); }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-s); overflow: hidden; }
+.seg button {
+  font: inherit; font-size: 12.5px; color: var(--ink-2); background: transparent;
+  border: 0; border-right: 1px solid var(--line); padding: 6px 12px; cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.seg button:last-child { border-right: 0; }
+.seg button:hover { background: var(--panel-2); color: var(--ink); }
+.seg button.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+
+/* ---------------------------------------------------------------- page scaffolding */
+
+.page { padding: 24px 28px 60px; max-width: 1480px; margin: 0 auto; }
+
+.page-head { margin-bottom: 20px; }
+.page-head h1 { margin: 0 0 5px; font-size: 21px; font-weight: 680; letter-spacing: -.02em; }
+.page-head p { margin: 0; font-size: 13.5px; color: var(--ink-2); max-width: 74ch; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.card-h {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.card-h h2 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
+.card-h .hint { font-size: 12px; color: var(--ink-3); }
+.card-h .right { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+
+.muted { color: var(--ink-3); }
+.empty { padding: 30px 16px; text-align: center; color: var(--ink-3); font-size: 13.5px; }
+
+.grid { display: grid; gap: 14px; }
+@media (min-width: 1100px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+
+/* Section heading: the smallest type on the page that is still a heading. */
+.sh {
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 650; margin: 0 0 11px;
+}
+
+/* ---------------------------------------------------------------- measurement cards
+ *
+ * The numbers the investigation turned on. A card shows the value and, where a baseline was
+ * recorded, which way it moved: a figure with nothing to compare it against tells a reader
+ * nothing about whether it is bad.
+ */
+.mcards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(146px, 1fr)); }
+.mcard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 11px 13px 12px;
+}
+.mcard.hot { border-color: var(--red); background: var(--red-bg); }
+.mcard .mk {
+  font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600;
+}
+.mcard .mv {
+  display: block; margin-top: 5px; font-family: var(--mono);
+  font-size: 19px; font-weight: 600; letter-spacing: -.02em; color: var(--ink);
+}
+.mcard.hot .mv { color: var(--red); }
+.mcard .md { margin-top: 3px; font-size: 11.5px; color: var(--ink-3); }
+.mcard .md b { font-weight: 600; }
+.mcard .md b.up   { color: var(--red); }
+.mcard .md b.down { color: var(--green); }
+.mcard .md b.flat { color: var(--ink-3); }
+
+/* ---------------------------------------------------------------- tables */
+
+table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.data th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+table.data td { padding: 9px 14px; border-bottom: 1px solid var(--line); }
+table.data tr:last-child td { border-bottom: 0; }
+table.data tbody tr:hover { background: var(--panel-2); }
+table.data td.num { text-align: right; font-family: var(--mono); font-size: 12.5px; }
+table.data td.name { font-weight: 550; }
+
+.tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--ink-2);
+}
+.tag.ok { background: var(--green-bg); color: var(--green); }
+.tag.bad { background: var(--red-bg); color: var(--red); }
+.tag.warn { background: var(--amber-bg); color: var(--amber); }
+.tag.info { background: var(--blue-bg); color: var(--blue); }
+
+/* ---------------------------------------------------------------- charts (inline SVG) */
+
+.chart { padding: 6px 10px 10px; }
+.chart svg { display: block; width: 100%; height: 150px; overflow: visible; }
+.chart .axis { font-size: 10px; fill: var(--ink-3); font-family: var(--mono); }
+.chart .gridline { stroke: var(--line); stroke-width: 1; }
+.chart path.line { fill: none; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
+.chart path.area { stroke: none; opacity: .14; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 14px 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
+.legend i { width: 9px; height: 2.5px; border-radius: 2px; }
+
+/* ---------------------------------------------------------------- pipeline strip
+ *
+ * The shape of an investigation in one glance, before any detail is read. Every stage the
+ * pipeline can have is shown even when it did not run, because "the Log agent was skipped" is
+ * itself a decision worth seeing.
+ */
+.flow {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+.flow-step {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 102px;
+  flex: 1 0 auto;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  position: relative;
+}
+.flow-step:first-child { border-radius: var(--radius-s) 0 0 var(--radius-s); }
+.flow-step:last-child { border-radius: 0 var(--radius-s) var(--radius-s) 0; }
+.flow-step + .flow-step { border-left: 0; }
+.flow-step b { font-size: 12.5px; font-weight: 650; letter-spacing: -.01em; color: var(--ink-2); }
+.flow-step span { font-size: 11px; color: var(--ink-3); font-family: var(--mono); }
+.flow-step em { font-size: 10.5px; color: var(--ink-3); font-style: normal; }
+
+/* A completed stage is tinted in its own agent colour, so the strip doubles as the legend for
+   the timeline underneath it. */
+.flow-step.done { background: var(--panel-2); box-shadow: inset 0 2px 0 var(--c, var(--accent)); }
+.flow-step.done b { color: var(--c, var(--accent)); }
+.flow-step.skipped { background: var(--sunk); }
+.flow-step.skipped b, .flow-step.skipped span { color: var(--ink-3); }
+.flow-step.running, .flow-step.waiting { background: var(--amber-bg); box-shadow: inset 0 2px 0 var(--amber); }
+.flow-step.running b, .flow-step.waiting b { color: var(--amber); }
+.flow-step.failed { background: var(--red-bg); box-shadow: inset 0 2px 0 var(--red); }
+.flow-step.failed b { color: var(--red); }
+.flow-step.pending { background: transparent; }
+.flow-step.pending b, .flow-step.pending span { color: var(--ink-3); }
+
+/* ---------------------------------------------------------------- investigation rounds
+ *
+ * A rejected analysis sends the investigators back out, so the same agent can report twice. The
+ * rounds are therefore the top-level structure of the timeline rather than a tag on a card:
+ * "what did round 2 change" is the question a reader of a re-planned investigation has, and a
+ * flat list of agent names cannot answer it. How many rounds there are comes from the data.
+ */
+.round {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.round > summary {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 15px;
+  cursor: pointer;
+  list-style: none;
+  background: var(--panel-2);
+  border-bottom: 1px solid transparent;
+}
+.round[open] > summary { border-bottom-color: var(--line); }
+.round > summary::-webkit-details-marker { display: none; }
+.round > summary:hover { background: var(--panel); }
+
+.round-chev { width: 10px; height: 10px; flex: none; color: var(--ink-3); transition: transform .15s; }
+.round[open] .round-chev { transform: rotate(90deg); }
+
+.round-n {
+  font-size: 13px; font-weight: 680; letter-spacing: -.01em; color: var(--ink);
+  display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+}
+.round-n i {
+  font-style: normal; font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--ink-2); background: var(--sunk); border: 1px solid var(--line);
+  border-radius: 999px; padding: 1px 8px;
+}
+/* The badge carries how the round ended: amber where the Critic rejected what it found, green
+   where the Critic accepted it, neutral where no review was recorded. */
+.round.again .round-n i { color: var(--amber); border-color: var(--amber); background: var(--amber-bg); }
+.round.settled .round-n i { color: var(--green); border-color: var(--green); background: var(--green-bg); }
+.round.settled .round-why { color: var(--ink-2); }
+.round-why { font-size: 12.5px; color: var(--ink-2); min-width: 0;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.round.again .round-why { color: var(--amber); }
+.round-meta { margin-left: auto; font-size: 11.5px; color: var(--ink-3); font-family: var(--mono);
+              white-space: nowrap; }
+.round-b { padding: 4px 16px 18px; }
+
+@media (prefers-reduced-motion: reduce) { .round-chev { transition: none; } }
+
+/* ---------------------------------------------------------------- misc */
+
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
+.kv dt { color: var(--ink-3); }
+.kv dd { margin: 0; }
+
+.scroll { overflow-y: auto; }
+.scroll::-webkit-scrollbar { width: 9px; height: 9px; }
+.scroll::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 6px; }
+.scroll::-webkit-scrollbar-thumb:hover { background: var(--ink-3); }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+
+@media (max-width: 760px) {
+  .page { padding: 16px; }
+  .nav { gap: 10px; padding: 0 12px; }
+  .brand span { display: none; }
+  .health-sum b { display: none; }
+  .health-pop { width: min(320px, calc(100vw - 24px)); position: fixed; right: 12px; top: 58px; }
+  .round-why { display: none; }
+}

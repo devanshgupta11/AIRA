@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traces · AIRA</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .tr-grid { display: grid; gap: 14px; }
+  @media (min-width: 1180px) { .tr-grid { grid-template-columns: 250px 1fr; align-items: start; } }
+  .svc-list { padding: 6px; max-height: 520px; }
+  .svc-list button {
+    display: flex; align-items: baseline; gap: 8px; width: 100%;
+    font: inherit; font-size: 13px; text-align: left; color: var(--ink-2);
+    background: none; border: 0; border-radius: var(--radius-s);
+    padding: 7px 10px; cursor: pointer;
+  }
+  .svc-list button:hover { background: var(--sunk); color: var(--ink); }
+  .svc-list button.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+  .svc-list .group {
+    font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--ink-3); padding: 10px 10px 4px;
+  }
+  .trace-row td { vertical-align: top; }
+  .trace-name { font-weight: 550; }
+  .trace-sub { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .chip {
+    font-size: 10.5px; color: var(--ink-2); background: var(--sunk);
+    border-radius: 999px; padding: 1px 7px;
+  }
+  .chip.aira { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+  .dur { font-family: var(--mono); font-size: 12.5px; }
+  .durcell { display: flex; align-items: center; gap: 9px; justify-content: flex-end; }
+  .durbar { height: 4px; width: 56px; border-radius: 2px; background: var(--sunk);
+            border: 1px solid var(--line); overflow: hidden; flex: none; }
+  .durbar i { display: block; height: 100%; background: var(--accent); }
+  .durbar.slow i { background: var(--amber); }
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="brand"><b>AIRA</b><span>incident response</span></div>
+  <div class="tabs">
+    <a class="tab" href="/">Console</a>
+    <a class="tab" href="/metrics">Metrics</a>
+    <a class="tab on" href="/traces">Traces</a>
+  </div>
+  <div class="nav-right">
+    <button class="icon-btn" id="theme" title="Light or dark">Theme</button>
+  </div>
+</nav>
+
+<div class="page">
+  <div class="page-head">
+    <h1>Traces</h1>
+    <p>Every investigation AIRA runs becomes one distributed trace spanning all three of its
+       processes — the backend, the MCP tools server and the RCA agent. Pick a service to see its
+       traces; open one to follow it span by span in Jaeger.</p>
+  </div>
+
+  <div class="tr-grid">
+    <div class="card">
+      <div class="card-h"><h2>Services</h2><span class="hint">in Jaeger</span></div>
+      <div class="svc-list scroll" id="svcList"><div class="empty">Loading…</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">
+        <h2 id="title">Recent traces</h2>
+        <span class="hint" id="subtitle">last 3 hours</span>
+        <span class="right" id="count"></span>
+      </div>
+      <div id="traceBody"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+
+const root = document.documentElement;
+try { const t = localStorage.getItem("aira-theme"); if (t) root.setAttribute("data-theme", t); } catch {}
+document.getElementById("theme").onclick = () => {
+  const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  root.setAttribute("data-theme", next);
+  try { localStorage.setItem("aira-theme", next); } catch {}
+};
+
+let service = "aira";
+
+const clock = ms => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const ago = ms => {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  return s < 60 ? s + "s ago" : s < 3600 ? Math.floor(s / 60) + "m ago" : Math.floor(s / 3600) + "h ago";
+};
+const dur = ms => ms >= 1000 ? (ms / 1000).toFixed(2) + " s" : Math.round(ms) + " ms";
+
+async function loadServices() {
+  try {
+    const d = await (await fetch("/api/traces/services")).json();
+    const aira = d.aira_services || [];
+    const rest = (d.services || []).filter(s => !aira.includes(s));
+    document.getElementById("svcList").innerHTML =
+      `<div class="group">AIRA itself</div>` +
+      aira.map(s => `<button data-svc="${esc(s)}">${esc(s)}</button>`).join("") +
+      `<div class="group">Monitored services</div>` +
+      rest.map(s => `<button data-svc="${esc(s)}">${esc(s)}</button>`).join("");
+    document.querySelectorAll("#svcList button").forEach(b =>
+      b.onclick = () => { service = b.dataset.svc; loadTraces(); });
+    mark();
+  } catch {
+    document.getElementById("svcList").innerHTML = `<div class="empty">Jaeger unreachable</div>`;
+  }
+}
+
+function mark() {
+  document.querySelectorAll("#svcList button").forEach(b =>
+    b.classList.toggle("on", b.dataset.svc === service));
+}
+
+async function loadTraces() {
+  mark();
+  document.getElementById("title").textContent = service;
+  try {
+    const d = await (await fetch(`/api/traces/recent?service=${encodeURIComponent(service)}&limit=30`)).json();
+    const traces = d.traces || [];
+    document.getElementById("count").textContent =
+      traces.length ? `${traces.length} traces` : "";
+    if (!traces.length) {
+      document.getElementById("traceBody").innerHTML =
+        `<div class="empty">${d.error ? esc(d.error) : "No traces in the last 3 hours"}</div>`;
+      return;
+    }
+    const slowest = Math.max(...traces.map(t => t.duration_ms || 0), 1);
+    const slowish = slowest * 0.6;
+    document.getElementById("traceBody").innerHTML = `
+      <div class="scroll" style="max-height:640px">
+      <table class="data">
+        <thead><tr><th>Trace</th><th class="num">spans</th><th class="num">duration</th>
+                   <th class="num">when</th><th></th></tr></thead>
+        <tbody>${traces.map(t => `
+          <tr class="trace-row">
+            <td>
+              <div class="trace-name">${esc(t.name)}</div>
+              ${t.incident_id ? `<div class="trace-sub">incident ${esc(t.incident_id)}${
+                  t.alertname ? ` · ${esc(t.alertname)}` : ""}${
+                  t.service ? ` · ${esc(t.service)}` : ""}</div>` : ""}
+              <div class="chips">${(t.services || []).map(s =>
+                `<span class="chip ${s.startsWith("aira") ? "aira" : ""}">${esc(s)}</span>`).join("")}</div>
+            </td>
+            <td class="num">${t.span_count}</td>
+            <td class="num"><div class="durcell">
+              <span class="dur">${esc(dur(t.duration_ms))}</span>
+              <span class="durbar${t.duration_ms >= slowish ? " slow" : ""}"><i style="width:${
+                Math.max(3, Math.round((t.duration_ms / slowest) * 100))}%"></i></span>
+            </div></td>
+            <td class="num" title="${esc(clock(t.started_ms))}">${esc(ago(t.started_ms))}</td>
+            <td class="num"><a href="http://localhost:8080/jaeger/ui/trace/${esc(t.trace_id)}"
+                 target="_blank" rel="noopener">open</a></td>
+          </tr>`).join("")}</tbody>
+      </table></div>`;
+  } catch {
+    document.getElementById("traceBody").innerHTML = `<div class="empty">Backend unreachable</div>`;
+  }
+}
+
+loadServices();
+loadTraces();
+setInterval(loadTraces, 20000);
+</script>
+</body>
+</html>
