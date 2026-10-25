@@ -1,0 +1,323 @@
+{
+ "generated_at": "20261024T210038Z",
+ "method": "replay on stored evidence; detection and recovery measured separately live",
+ "ground_truth": "D:\\AIRA\\scripts\\eval\\ground_truth.json",
+ "arms": [
+  "baseline-rules"
+ ],
+ "repeats": 3,
+ "elapsed_s": 0.0,
+ "rows": [
+  {
+   "scenario": "payment-failure",
+   "repeat": 1,
+   "incident_id": 210,
+   "arm": "baseline-rules",
+   "cause": "Elevated latency p95 ms on payment; no configuration change or stopped container found, so the cause is not established.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "low",
+   "hypotheses": [
+    "Elevated latency p95 ms on payment; no configuration change or stopped container found, so the cause is not established."
+   ],
+   "runtime_s": 0.00042779999785125256,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "no decisive signal; reported as symptoms only"
+   },
+   "cause_correct": false,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": false
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 2,
+   "incident_id": 201,
+   "arm": "baseline-rules",
+   "cause": "The paymentFailure feature flag is enabled (100%) on the payment service.",
+   "action": "reset_feature_flag",
+   "target": "payment",
+   "params": {
+    "flag": "paymentFailure"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The paymentFailure feature flag is enabled (100%) on the payment service."
+   ],
+   "runtime_s": 0.00011169999197591096,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 3,
+   "incident_id": 178,
+   "arm": "baseline-rules",
+   "cause": "The paymentFailure feature flag is enabled (100%) on the payment service.",
+   "action": "reset_feature_flag",
+   "target": "payment",
+   "params": {
+    "flag": "paymentFailure"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The paymentFailure feature flag is enabled (100%) on the payment service."
+   ],
+   "runtime_s": 5.220000457484275e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "cart-failure",
+   "repeat": 1,
+   "incident_id": 84,
+   "arm": "baseline-rules",
+   "cause": "The cartFailure feature flag is enabled (100%) on the cart service.",
+   "action": "reset_feature_flag",
+   "target": "cart",
+   "params": {
+    "flag": "cartFailure"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The cartFailure feature flag is enabled (100%) on the cart service."
+   ],
+   "runtime_s": 4.469999112188816e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "product-catalog-failure",
+   "repeat": 1,
+   "incident_id": 82,
+   "arm": "baseline-rules",
+   "cause": "The productCatalogFailure feature flag is enabled (on) on the product-catalog service.",
+   "action": "reset_feature_flag",
+   "target": "product-catalog",
+   "params": {
+    "flag": "productCatalogFailure"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The productCatalogFailure feature flag is enabled (on) on the product-catalog service."
+   ],
+   "runtime_s": 4.300000728107989e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 1,
+   "incident_id": 154,
+   "arm": "baseline-rules",
+   "cause": "The adHighCpu feature flag is enabled (on) on the ad service.",
+   "action": "reset_feature_flag",
+   "target": "ad",
+   "params": {
+    "flag": "adHighCpu"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The adHighCpu feature flag is enabled (on) on the ad service."
+   ],
+   "runtime_s": 4.270000499673188e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 2,
+   "incident_id": 137,
+   "arm": "baseline-rules",
+   "cause": "The adHighCpu feature flag is enabled (on) on the ad service.",
+   "action": "reset_feature_flag",
+   "target": "ad",
+   "params": {
+    "flag": "adHighCpu"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The adHighCpu feature flag is enabled (on) on the ad service."
+   ],
+   "runtime_s": 4.159999662078917e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 3,
+   "incident_id": 136,
+   "arm": "baseline-rules",
+   "cause": "The adHighCpu feature flag is enabled (on) on the ad service.",
+   "action": "reset_feature_flag",
+   "target": "ad",
+   "params": {
+    "flag": "adHighCpu"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The adHighCpu feature flag is enabled (on) on the ad service."
+   ],
+   "runtime_s": 4.25000034738332e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 1,
+   "incident_id": 211,
+   "arm": "baseline-rules",
+   "cause": "The recommendation container is not running, so it reports no metrics.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The recommendation container is not running, so it reports no metrics."
+   ],
+   "runtime_s": 0.00011269999959040433,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "container stopped reporting for over 60s"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 2,
+   "incident_id": 167,
+   "arm": "baseline-rules",
+   "cause": "The recommendation container is not running, so it reports no metrics.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The recommendation container is not running, so it reports no metrics."
+   ],
+   "runtime_s": 0.0001934000028995797,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "container stopped reporting for over 60s"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 3,
+   "incident_id": 148,
+   "arm": "baseline-rules",
+   "cause": "The recommendation container is not running, so it reports no metrics.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The recommendation container is not running, so it reports no metrics."
+   ],
+   "runtime_s": 0.000179300011950545,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "container stopped reporting for over 60s"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  }
+ ]
+}

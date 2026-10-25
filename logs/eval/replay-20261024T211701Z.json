@@ -1,0 +1,1722 @@
+{
+ "generated_at": "20261024T211701Z",
+ "method": "replay on stored evidence; detection and recovery measured separately live",
+ "ground_truth": "D:\\AIRA\\scripts\\eval\\ground_truth.json",
+ "arms": [
+  "baseline-rules",
+  "baseline-single-llm",
+  "aira-no-critic",
+  "aira-no-memory",
+  "aira-full"
+ ],
+ "repeats": 3,
+ "subjects": [
+  {
+   "scenario": "payment-failure",
+   "incident_id": 47,
+   "evidence_lag_s": 10.6
+  },
+  {
+   "scenario": "payment-failure",
+   "incident_id": 41,
+   "evidence_lag_s": 10.6
+  },
+  {
+   "scenario": "payment-failure",
+   "incident_id": 140,
+   "evidence_lag_s": 11.6
+  },
+  {
+   "scenario": "cart-failure",
+   "incident_id": 84,
+   "evidence_lag_s": 18.6
+  },
+  {
+   "scenario": "product-catalog-failure",
+   "incident_id": 82,
+   "evidence_lag_s": 19.6
+  },
+  {
+   "scenario": "high-cpu",
+   "incident_id": 43,
+   "evidence_lag_s": 10.6
+  },
+  {
+   "scenario": "high-cpu",
+   "incident_id": 42,
+   "evidence_lag_s": 10.6
+  },
+  {
+   "scenario": "high-cpu",
+   "incident_id": 137,
+   "evidence_lag_s": 11.6
+  },
+  {
+   "scenario": "service-down",
+   "incident_id": 48,
+   "evidence_lag_s": 10.6
+  },
+  {
+   "scenario": "service-down",
+   "incident_id": 100,
+   "evidence_lag_s": 12.6
+  },
+  {
+   "scenario": "service-down",
+   "incident_id": 167,
+   "evidence_lag_s": 13.6
+  }
+ ],
+ "elapsed_s": 887.7,
+ "rows": [
+  {
+   "scenario": "payment-failure",
+   "repeat": 1,
+   "incident_id": 47,
+   "arm": "baseline-rules",
+   "cause": "Elevated error ratio on payment; no configuration change or stopped container found, so the cause is not established.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "low",
+   "hypotheses": [
+    "Elevated error ratio on payment; no configuration change or stopped container found, so the cause is not established."
+   ],
+   "runtime_s": 0.0006931000098120421,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "no decisive signal; reported as symptoms only"
+   },
+   "cause_correct": false,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": false
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 1,
+   "incident_id": 47,
+   "arm": "baseline-single-llm",
+   "cause": "The payment service is failing due to an invalid token error.",
+   "action": "restart_container",
+   "target": "payment",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The payment service is failing due to an invalid token error."
+   ],
+   "runtime_s": 6.347152599992114,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {},
+   "cause_correct": false,
+   "action_correct": false,
+   "proposed_wrong_action": true,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 1,
+   "incident_id": 47,
+   "arm": "aira-no-critic",
+   "cause": "The payment service is failing due to an invalid token being sent in requests.",
+   "action": null,
+   "target": "payment",
+   "params": {},
+   "confidence": "low",
+   "hypotheses": [
+    "The payment service is failing due to an invalid token being sent in requests.",
+    "The payment service is experiencing a high error rate because the upstream authentication service has stopped working."
+   ],
+   "runtime_s": 23.416311199995107,
+   "llm_calls": 2,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1
+   },
+   "cause_correct": false,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 1,
+   "incident_id": 47,
+   "arm": "aira-no-memory",
+   "cause": "The payment service is failing due to an invalid token being sent in requests.",
+   "action": null,
+   "target": "payment",
+   "params": {},
+   "confidence": "low",
+   "hypotheses": [
+    "The payment service is failing due to an invalid token being sent in requests.",
+    "The error rate for the PaymentService/Charge operation has risen sharply, indicating a recent change or issue."
+   ],
+   "runtime_s": 34.568446400007815,
+   "llm_calls": 5,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 2,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": false,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 1,
+   "incident_id": 47,
+   "arm": "aira-full",
+   "cause": "",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": null,
+   "hypotheses": [],
+   "runtime_s": 31.835399500007043,
+   "llm_calls": 2,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AgentError: invalid agent output after retry: Your first hypothesis repeats the cause of past incident #201 (feature, paymentfailure), but no agent reported anything of the kind about THIS incident. A past case is a hint, not a finding: either base the hypothesis on what the agents actually reported",
+   "detail": {
+    "prior_cases": [
+     {
+      "incident_id": 201,
+      "score": 0.9965
+     },
+     {
+      "incident_id": 178,
+      "score": 0.9923
+     },
+     {
+      "incident_id": 129,
+      "score": 0.9922
+     }
+    ],
+    "rounds": 1,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": false,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 2,
+   "incident_id": 41,
+   "arm": "baseline-rules",
+   "cause": "The paymentFailure feature flag is enabled (100%) on the payment service.",
+   "action": "reset_feature_flag",
+   "target": "payment",
+   "params": {
+    "flag": "paymentFailure"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The paymentFailure feature flag is enabled (100%) on the payment service."
+   ],
+   "runtime_s": 4.169999738223851e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 2,
+   "incident_id": 41,
+   "arm": "baseline-single-llm",
+   "cause": "The feature flag paymentFailure set to 100% is causing all payment requests to fail due to an invalid token.",
+   "action": "reset_feature_flag",
+   "target": "payment",
+   "params": {
+    "flag": "paymentFailure"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The feature flag paymentFailure set to 100% is causing all payment requests to fail due to an invalid token."
+   ],
+   "runtime_s": 5.118287699995562,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {},
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 2,
+   "incident_id": 41,
+   "arm": "aira-no-critic",
+   "cause": "The paymentFailure feature flag set to 100% on the payment service is causing the failures.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The paymentFailure feature flag set to 100% on the payment service is causing the failures."
+   ],
+   "runtime_s": 14.265844900000957,
+   "llm_calls": 3,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 2,
+   "incident_id": 41,
+   "arm": "aira-no-memory",
+   "cause": "The paymentFailure feature flag set to 100% on the payment service is causing the failures.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The paymentFailure feature flag set to 100% on the payment service is causing the failures."
+   ],
+   "runtime_s": 36.32455600000685,
+   "llm_calls": 7,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 2,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 2,
+   "incident_id": 41,
+   "arm": "aira-full",
+   "cause": "",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": null,
+   "hypotheses": [],
+   "runtime_s": 12.380614900001092,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AgentError: invalid agent output after retry: from_agents contains names that did not investigate this incident: change agent. Use only: triage, metrics, log, change.",
+   "detail": {
+    "prior_cases": [
+     {
+      "incident_id": 178,
+      "score": 0.9933
+     },
+     {
+      "incident_id": 129,
+      "score": 0.9885
+     },
+     {
+      "incident_id": 201,
+      "score": 0.9838
+     }
+    ]
+   },
+   "cause_correct": false,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 3,
+   "incident_id": 140,
+   "arm": "baseline-rules",
+   "cause": "The paymentFailure feature flag is enabled (100%) on the payment service.",
+   "action": "reset_feature_flag",
+   "target": "payment",
+   "params": {
+    "flag": "paymentFailure"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The paymentFailure feature flag is enabled (100%) on the payment service."
+   ],
+   "runtime_s": 7.310000364668667e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 3,
+   "incident_id": 140,
+   "arm": "baseline-single-llm",
+   "cause": "The feature flag paymentFailure set to 100% is causing all payment requests to fail due to an invalid token.",
+   "action": "reset_feature_flag",
+   "target": "payment",
+   "params": {
+    "flag": "paymentFailure"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The feature flag paymentFailure set to 100% is causing all payment requests to fail due to an invalid token."
+   ],
+   "runtime_s": 5.1773620000021765,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {},
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 3,
+   "incident_id": 140,
+   "arm": "aira-no-critic",
+   "cause": "Feature flag paymentFailure set to 100% for service payment caused all 'oteldemo.PaymentService/Charge' operations to fail.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "Feature flag paymentFailure set to 100% for service payment caused all 'oteldemo.PaymentService/Charge' operations to fail."
+   ],
+   "runtime_s": 14.994446199998492,
+   "llm_calls": 3,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 3,
+   "incident_id": 140,
+   "arm": "aira-no-memory",
+   "cause": "Feature flag paymentFailure set to 100% for service payment caused all 'oteldemo.PaymentService/Charge' operations to fail.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "Feature flag paymentFailure set to 100% for service payment caused all 'oteldemo.PaymentService/Charge' operations to fail."
+   ],
+   "runtime_s": 33.87105719999818,
+   "llm_calls": 6,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 2,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "payment-failure",
+   "repeat": 3,
+   "incident_id": 140,
+   "arm": "aira-full",
+   "cause": "Feature flag paymentFailure set to 100% for service payment is causing all charge operations to fail.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "Feature flag paymentFailure set to 100% for service payment is causing all charge operations to fail."
+   ],
+   "runtime_s": 22.165593600002467,
+   "llm_calls": 4,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [
+     {
+      "incident_id": 201,
+      "score": 0.9965
+     },
+     {
+      "incident_id": 178,
+      "score": 0.9923
+     },
+     {
+      "incident_id": 129,
+      "score": 0.9922
+     }
+    ],
+    "rounds": 1,
+    "critic_verdict": "accept"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "cart-failure",
+   "repeat": 1,
+   "incident_id": 84,
+   "arm": "baseline-rules",
+   "cause": "The cartFailure feature flag is enabled (100%) on the cart service.",
+   "action": "reset_feature_flag",
+   "target": "cart",
+   "params": {
+    "flag": "cartFailure"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The cartFailure feature flag is enabled (100%) on the cart service."
+   ],
+   "runtime_s": 7.169999298639596e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "cart-failure",
+   "repeat": 1,
+   "incident_id": 84,
+   "arm": "baseline-single-llm",
+   "cause": "The service is unable to connect to Redis storage, causing the 'FailedPrecondition' error.",
+   "action": "restart_container",
+   "target": "cart",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The service is unable to connect to Redis storage, causing the 'FailedPrecondition' error."
+   ],
+   "runtime_s": 4.883769299995038,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {},
+   "cause_correct": false,
+   "action_correct": false,
+   "proposed_wrong_action": true,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "cart-failure",
+   "repeat": 1,
+   "incident_id": 84,
+   "arm": "aira-no-critic",
+   "cause": "The cartFailure feature flag set to 100% for the cart service is causing all POST /oteldemo.CartService/EmptyCart operations to fail.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The cartFailure feature flag set to 100% for the cart service is causing all POST /oteldemo.CartService/EmptyCart operations to fail."
+   ],
+   "runtime_s": 14.380035400012275,
+   "llm_calls": 3,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "cart-failure",
+   "repeat": 1,
+   "incident_id": 84,
+   "arm": "aira-no-memory",
+   "cause": "The cartFailure feature flag set to 100% for the cart service is causing all POST /oteldemo.CartService/EmptyCart operations to fail.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The cartFailure feature flag set to 100% for the cart service is causing all POST /oteldemo.CartService/EmptyCart operations to fail."
+   ],
+   "runtime_s": 37.82658100000117,
+   "llm_calls": 7,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 2,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "cart-failure",
+   "repeat": 1,
+   "incident_id": 84,
+   "arm": "aira-full",
+   "cause": "The cartFailure feature flag set to 100% for the cart service is causing all EmptyCart operations to fail.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The cartFailure feature flag set to 100% for the cart service is causing all EmptyCart operations to fail."
+   ],
+   "runtime_s": 41.209178900011466,
+   "llm_calls": 8,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [
+     {
+      "incident_id": 94,
+      "score": 0.8544
+     },
+     {
+      "incident_id": 158,
+      "score": 0.8486
+     },
+     {
+      "incident_id": 141,
+      "score": 0.8476
+     }
+    ],
+    "rounds": 2,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "product-catalog-failure",
+   "repeat": 1,
+   "incident_id": 82,
+   "arm": "baseline-rules",
+   "cause": "The productCatalogFailure feature flag is enabled (on) on the product-catalog service.",
+   "action": "reset_feature_flag",
+   "target": "product-catalog",
+   "params": {
+    "flag": "productCatalogFailure"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The productCatalogFailure feature flag is enabled (on) on the product-catalog service."
+   ],
+   "runtime_s": 4.81999886687845e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "product-catalog-failure",
+   "repeat": 1,
+   "incident_id": 82,
+   "arm": "baseline-single-llm",
+   "cause": "The feature flag productCatalogFailure being on is causing increased errors in the GetProduct operation.",
+   "action": "reset_feature_flag",
+   "target": "product-catalog",
+   "params": {
+    "flag": "productCatalogFailure"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The feature flag productCatalogFailure being on is causing increased errors in the GetProduct operation."
+   ],
+   "runtime_s": 4.8692371000070125,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {},
+   "cause_correct": false,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "product-catalog-failure",
+   "repeat": 1,
+   "incident_id": 82,
+   "arm": "aira-no-critic",
+   "cause": "The product-catalog service is failing due to the 'productCatalogFailure' feature flag being on.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The product-catalog service is failing due to the 'productCatalogFailure' feature flag being on."
+   ],
+   "runtime_s": 14.349586899988935,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AgentError: invalid agent output after retry: That action would be refused by AIRA's safety layer: flag 'productCatalogFailure' is already off, so resetting it would change nothing\nChoose a different action, or answer 'none' if no safe action applies.",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "product-catalog-failure",
+   "repeat": 1,
+   "incident_id": 82,
+   "arm": "aira-no-memory",
+   "cause": "The product-catalog service is failing due to the 'productCatalogFailure' feature flag being on.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The product-catalog service is failing due to the 'productCatalogFailure' feature flag being on."
+   ],
+   "runtime_s": 19.18268279999029,
+   "llm_calls": 4,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1,
+    "critic_verdict": "accept"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "product-catalog-failure",
+   "repeat": 1,
+   "incident_id": 82,
+   "arm": "aira-full",
+   "cause": "The product-catalog service is experiencing a critical error rate due to the 'productCatalogFailure' feature flag being on.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The product-catalog service is experiencing a critical error rate due to the 'productCatalogFailure' feature flag being on."
+   ],
+   "runtime_s": 22.05174559999432,
+   "llm_calls": 4,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [
+     {
+      "incident_id": 164,
+      "score": 0.8543
+     },
+     {
+      "incident_id": 176,
+      "score": 0.8516
+     },
+     {
+      "incident_id": 159,
+      "score": 0.8497
+     }
+    ],
+    "rounds": 1,
+    "critic_verdict": "accept"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 1,
+   "incident_id": 43,
+   "arm": "baseline-rules",
+   "cause": "The adHighCpu feature flag is enabled (on) on the ad service.",
+   "action": "reset_feature_flag",
+   "target": "ad",
+   "params": {
+    "flag": "adHighCpu"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The adHighCpu feature flag is enabled (on) on the ad service."
+   ],
+   "runtime_s": 6.679999933112413e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 1,
+   "incident_id": 43,
+   "arm": "baseline-single-llm",
+   "cause": "The ad service's container is running an updated image that causes excessive CPU usage.",
+   "action": "restart_container",
+   "target": "ad",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The ad service's container is running an updated image that causes excessive CPU usage."
+   ],
+   "runtime_s": 4.5564450999954715,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {},
+   "cause_correct": false,
+   "action_correct": false,
+   "proposed_wrong_action": true,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 1,
+   "incident_id": 43,
+   "arm": "aira-no-critic",
+   "cause": "Feature flag adHighCpu is on, causing increased CPU usage.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "Feature flag adHighCpu is on, causing increased CPU usage."
+   ],
+   "runtime_s": 14.32543440000154,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AgentError: invalid agent output after retry: That action would be refused by AIRA's safety layer: flag 'adHighCpu' is already off, so resetting it would change nothing\nChoose a different action, or answer 'none' if no safe action applies.",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 1,
+   "incident_id": 43,
+   "arm": "aira-no-memory",
+   "cause": "Feature flag adHighCpu is on, causing increased CPU usage.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "Feature flag adHighCpu is on, causing increased CPU usage."
+   ],
+   "runtime_s": 31.442738600002485,
+   "llm_calls": 4,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AgentError: invalid agent output after retry: That action would be refused by AIRA's safety layer: flag 'adHighCpu' is already off, so resetting it would change nothing\nChoose a different action, or answer 'none' if no safe action applies.",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 2,
+    "critic_verdict": "accept"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 1,
+   "incident_id": 43,
+   "arm": "aira-full",
+   "cause": "Feature flag adHighCpu is on, causing increased CPU usage.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "Feature flag adHighCpu is on, causing increased CPU usage."
+   ],
+   "runtime_s": 21.624897200003034,
+   "llm_calls": 4,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [
+     {
+      "incident_id": 136,
+      "score": 1.0
+     },
+     {
+      "incident_id": 133,
+      "score": 1.0
+     },
+     {
+      "incident_id": 107,
+      "score": 1.0
+     }
+    ],
+    "rounds": 1,
+    "critic_verdict": "accept"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 2,
+   "incident_id": 42,
+   "arm": "baseline-rules",
+   "cause": "The adHighCpu feature flag is enabled (on) on the ad service.",
+   "action": "reset_feature_flag",
+   "target": "ad",
+   "params": {
+    "flag": "adHighCpu"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The adHighCpu feature flag is enabled (on) on the ad service."
+   ],
+   "runtime_s": 5.129999772179872e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 2,
+   "incident_id": 42,
+   "arm": "baseline-single-llm",
+   "cause": "The ad service's container is running an updated image with increased CPU usage.",
+   "action": "restart_container",
+   "target": "ad",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The ad service's container is running an updated image with increased CPU usage."
+   ],
+   "runtime_s": 4.551918900004239,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {},
+   "cause_correct": false,
+   "action_correct": false,
+   "proposed_wrong_action": true,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 2,
+   "incident_id": 42,
+   "arm": "aira-no-critic",
+   "cause": "Feature flag adHighCpu is on, causing increased CPU usage.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "Feature flag adHighCpu is on, causing increased CPU usage."
+   ],
+   "runtime_s": 14.200286599996616,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AgentError: invalid agent output after retry: That action would be refused by AIRA's safety layer: flag 'adHighCpu' is already off, so resetting it would change nothing\nChoose a different action, or answer 'none' if no safe action applies.",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 2,
+   "incident_id": 42,
+   "arm": "aira-no-memory",
+   "cause": "Feature flag adHighCpu is on, causing increased CPU usage.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "Feature flag adHighCpu is on, causing increased CPU usage."
+   ],
+   "runtime_s": 19.265896799988695,
+   "llm_calls": 2,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AgentError: invalid agent output after retry: That action would be refused by AIRA's safety layer: flag 'adHighCpu' is already off, so resetting it would change nothing\nChoose a different action, or answer 'none' if no safe action applies.",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1,
+    "critic_verdict": "accept"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 2,
+   "incident_id": 42,
+   "arm": "aira-full",
+   "cause": "Feature flag adHighCpu is on, causing increased CPU usage.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "Feature flag adHighCpu is on, causing increased CPU usage."
+   ],
+   "runtime_s": 21.730245399987325,
+   "llm_calls": 2,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AgentError: invalid agent output after retry: That action would be refused by AIRA's safety layer: flag 'adHighCpu' is already off, so resetting it would change nothing\nChoose a different action, or answer 'none' if no safe action applies.",
+   "detail": {
+    "prior_cases": [
+     {
+      "incident_id": 136,
+      "score": 1.0
+     },
+     {
+      "incident_id": 133,
+      "score": 1.0
+     },
+     {
+      "incident_id": 107,
+      "score": 1.0
+     }
+    ],
+    "rounds": 1,
+    "critic_verdict": "accept"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 3,
+   "incident_id": 137,
+   "arm": "baseline-rules",
+   "cause": "The adHighCpu feature flag is enabled (on) on the ad service.",
+   "action": "reset_feature_flag",
+   "target": "ad",
+   "params": {
+    "flag": "adHighCpu"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The adHighCpu feature flag is enabled (on) on the ad service."
+   ],
+   "runtime_s": 6.900000153109431e-05,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "non-default feature flag found in change evidence"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 3,
+   "incident_id": 137,
+   "arm": "baseline-single-llm",
+   "cause": "The ad service's CPU usage spiked due to the 'adHighCpu' feature flag being on.",
+   "action": "reset_feature_flag",
+   "target": "ad",
+   "params": {
+    "flag": "adHighCpu"
+   },
+   "confidence": "high",
+   "hypotheses": [
+    "The ad service's CPU usage spiked due to the 'adHighCpu' feature flag being on."
+   ],
+   "runtime_s": 5.037874000001466,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {},
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 3,
+   "incident_id": 137,
+   "arm": "aira-no-critic",
+   "cause": "adHighCpu feature flag being on caused ad service to use excessive CPU.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "adHighCpu feature flag being on caused ad service to use excessive CPU."
+   ],
+   "runtime_s": 14.350035900002695,
+   "llm_calls": 3,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 3,
+   "incident_id": 137,
+   "arm": "aira-no-memory",
+   "cause": "adHighCpu feature flag being on caused ad service to use excessive CPU.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "adHighCpu feature flag being on caused ad service to use excessive CPU."
+   ],
+   "runtime_s": 32.88141149999865,
+   "llm_calls": 6,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 2,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "high-cpu",
+   "repeat": 3,
+   "incident_id": 137,
+   "arm": "aira-full",
+   "cause": "adHighCpu feature flag is on for service ad.",
+   "action": null,
+   "target": null,
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "adHighCpu feature flag is on for service ad."
+   ],
+   "runtime_s": 24.77010180000798,
+   "llm_calls": 2,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AgentError: invalid agent output after retry: That action would be refused by AIRA's safety layer: flag 'adHighCpu' is already off, so resetting it would change nothing\nChoose a different action, or answer 'none' if no safe action applies.",
+   "detail": {
+    "prior_cases": [
+     {
+      "incident_id": 136,
+      "score": 1.0
+     },
+     {
+      "incident_id": 133,
+      "score": 1.0
+     },
+     {
+      "incident_id": 107,
+      "score": 1.0
+     }
+    ],
+    "rounds": 1,
+    "critic_verdict": "accept"
+   },
+   "cause_correct": true,
+   "action_correct": false,
+   "proposed_wrong_action": false,
+   "proposed_nothing": true,
+   "errored": true
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 1,
+   "incident_id": 48,
+   "arm": "baseline-rules",
+   "cause": "The recommendation container is not running, so it reports no metrics.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The recommendation container is not running, so it reports no metrics."
+   ],
+   "runtime_s": 0.00011860000086016953,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "container stopped reporting for over 60s"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 1,
+   "incident_id": 48,
+   "arm": "baseline-single-llm",
+   "cause": "The container for the recommendation service has stopped running.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The container for the recommendation service has stopped running."
+   ],
+   "runtime_s": 4.439834000004339,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {},
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 1,
+   "incident_id": 48,
+   "arm": "aira-no-critic",
+   "cause": "The recommendation service experienced a sudden drop in request rate and stopped reporting metrics.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "low",
+   "hypotheses": [
+    "The recommendation service experienced a sudden drop in request rate and stopped reporting metrics.",
+    "The recommendation service might have encountered an internal failure or misconfiguration."
+   ],
+   "runtime_s": 14.955437700002221,
+   "llm_calls": 2,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": true
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 1,
+   "incident_id": 48,
+   "arm": "aira-no-memory",
+   "cause": "The recommendation service was starved of resources leading to its shutdown.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "low",
+   "hypotheses": [
+    "The recommendation service was starved of resources leading to its shutdown.",
+    "A critical dependency of the recommendation service failed, causing it to stop."
+   ],
+   "runtime_s": 35.58863310000743,
+   "llm_calls": 5,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 2,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": true
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 1,
+   "incident_id": 48,
+   "arm": "aira-full",
+   "cause": "The recommendation service experienced a sudden drop in request rate and stopped reporting metrics.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "medium",
+   "hypotheses": [
+    "The recommendation service experienced a sudden drop in request rate and stopped reporting metrics.",
+    "A feature flag change or configuration issue caused the recommendation service to stop processing requests."
+   ],
+   "runtime_s": 36.970423399994615,
+   "llm_calls": 5,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 2,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": true
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 2,
+   "incident_id": 100,
+   "arm": "baseline-rules",
+   "cause": "The recommendation container is not running, so it reports no metrics.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The recommendation container is not running, so it reports no metrics."
+   ],
+   "runtime_s": 0.00010590000601951033,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "container stopped reporting for over 60s"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 2,
+   "incident_id": 100,
+   "arm": "baseline-single-llm",
+   "cause": "The container for the recommendation service has stopped running.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The container for the recommendation service has stopped running."
+   ],
+   "runtime_s": 4.886062500008848,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {},
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 2,
+   "incident_id": 100,
+   "arm": "aira-no-critic",
+   "cause": "The recommendation service stopped due to resource exhaustion.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "medium",
+   "hypotheses": [
+    "The recommendation service stopped due to resource exhaustion.",
+    "The recommendation service was stopped by an external dependency failure."
+   ],
+   "runtime_s": 14.639607100005378,
+   "llm_calls": 2,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": true
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 2,
+   "incident_id": 100,
+   "arm": "aira-no-memory",
+   "cause": "The recommendation service stopped due to resource exhaustion.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "low",
+   "hypotheses": [
+    "The recommendation service stopped due to resource exhaustion.",
+    "The recommendation service was restarted shortly before the incident, possibly causing a temporary disruption."
+   ],
+   "runtime_s": 36.241605300005176,
+   "llm_calls": 5,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 2,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": true
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 2,
+   "incident_id": 100,
+   "arm": "aira-full",
+   "cause": "The recommendation service stopped reporting metrics due to a resource exhaustion issue.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "low",
+   "hypotheses": [
+    "The recommendation service stopped reporting metrics due to a resource exhaustion issue.",
+    "The recommendation service stopped reporting metrics because of a configuration issue or misconfiguration."
+   ],
+   "runtime_s": 37.87369849999959,
+   "llm_calls": 5,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 2,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": true
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 3,
+   "incident_id": 167,
+   "arm": "baseline-rules",
+   "cause": "The recommendation container is not running, so it reports no metrics.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The recommendation container is not running, so it reports no metrics."
+   ],
+   "runtime_s": 0.00010979999206028879,
+   "llm_calls": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {
+    "rule": "container stopped reporting for over 60s"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 3,
+   "incident_id": 167,
+   "arm": "baseline-single-llm",
+   "cause": "The container for the recommendation service has stopped running.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "high",
+   "hypotheses": [
+    "The container for the recommendation service has stopped running."
+   ],
+   "runtime_s": 4.635279599999194,
+   "llm_calls": 1,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": null,
+   "detail": {},
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": false
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 3,
+   "incident_id": 167,
+   "arm": "aira-no-critic",
+   "cause": "The recommendation service stopped due to insufficient resources.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "low",
+   "hypotheses": [
+    "The recommendation service stopped due to insufficient resources.",
+    "The recommendation service was manually terminated."
+   ],
+   "runtime_s": 13.849310499994317,
+   "llm_calls": 2,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 1
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": true
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 3,
+   "incident_id": 167,
+   "arm": "aira-no-memory",
+   "cause": "The recommendation service stopped due to insufficient resources.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "low",
+   "hypotheses": [
+    "The recommendation service stopped due to insufficient resources.",
+    "The recommendation service was manually terminated."
+   ],
+   "runtime_s": 33.12289420000161,
+   "llm_calls": 5,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 2,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": true
+  },
+  {
+   "scenario": "service-down",
+   "repeat": 3,
+   "incident_id": 167,
+   "arm": "aira-full",
+   "cause": "The recommendation service stopped due to insufficient resources.",
+   "action": "restart_container",
+   "target": "recommendation",
+   "params": {},
+   "confidence": "low",
+   "hypotheses": [
+    "The recommendation service stopped due to insufficient resources.",
+    "The recommendation service was manually terminated."
+   ],
+   "runtime_s": 35.58510789999855,
+   "llm_calls": 5,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "error": "AttributeError: 'ActionProposal' object has no attribute 'params'",
+   "detail": {
+    "prior_cases": [],
+    "rounds": 2,
+    "critic_verdict": "insufficient"
+   },
+   "cause_correct": true,
+   "action_correct": true,
+   "proposed_wrong_action": false,
+   "proposed_nothing": false,
+   "errored": true
+  }
+ ]
+}

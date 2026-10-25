@@ -1,0 +1,21 @@
+{
+ "generated_at": "20261025T140521Z",
+ "dry_run": false,
+ "elapsed_s": 44.0,
+ "results": [
+  {
+   "scenario": "high-latency",
+   "alertname": "AiraHighLatency",
+   "service": "shipping",
+   "started_at": "2026-10-25T14:04:37.990251+00:00",
+   "error": "injection did not report success"
+  },
+  {
+   "scenario": "memory-growth",
+   "alertname": "AiraMemoryGrowth",
+   "service": "email",
+   "started_at": "2026-10-25T14:05:00.297697+00:00",
+   "error": "injection did not report success"
+  }
+ ]
+}

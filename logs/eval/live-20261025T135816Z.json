@@ -1,0 +1,25 @@
+{
+ "generated_at": "20261025T135816Z",
+ "dry_run": false,
+ "elapsed_s": 599.2,
+ "results": [
+  {
+   "scenario": "payment-failure",
+   "alertname": "AiraOperationFailing",
+   "service": "payment",
+   "started_at": "2026-10-25T13:48:17.733267+00:00",
+   "incident_id": 240,
+   "detection_s": 136.9,
+   "investigation_s": 255.3,
+   "cause": "The recent rise in request rate and p95 latency suggests an upstream service is experiencing issues.",
+   "rounds": 2,
+   "prior_cases": [
+    201,
+    129,
+    178
+   ],
+   "proposed": null,
+   "action_correct": false
+  }
+ ]
+}

@@ -1,0 +1,21 @@
+{
+ "generated_at": "20261025T142129Z",
+ "dry_run": false,
+ "elapsed_s": 908.6,
+ "results": [
+  {
+   "scenario": "high-latency",
+   "alertname": "AiraHighLatency",
+   "service": "shipping",
+   "started_at": "2026-10-25T14:06:20.990480+00:00",
+   "error": "no AiraHighLatency/shipping incident within 420s"
+  },
+  {
+   "scenario": "memory-growth",
+   "alertname": "AiraMemoryGrowth",
+   "service": "email",
+   "started_at": "2026-10-25T14:13:55.833104+00:00",
+   "error": "no AiraMemoryGrowth/email incident within 420s"
+  }
+ ]
+}

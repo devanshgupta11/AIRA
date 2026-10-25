@@ -1,0 +1,17 @@
+{
+ "generated_at": "20261024T214824Z",
+ "dry_run": true,
+ "elapsed_s": 534.7,
+ "results": [
+  {
+   "scenario": "high-cpu",
+   "alertname": "AiraHighCpu",
+   "service": "ad",
+   "started_at": "2026-10-24T21:39:30.218852+00:00",
+   "incident_id": 219,
+   "detection_s": 87.8,
+   "investigation_s": 422.0,
+   "error": "investigation did not conclude"
+  }
+ ]
+}

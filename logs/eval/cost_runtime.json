@@ -1,0 +1,558 @@
+{
+ "investigations": 57,
+ "gpu_watts_inferring": 55.2,
+ "gpu_watts_idle": 13.3,
+ "per_agent": {
+  "triage": {
+   "calls": 57,
+   "median_s": 7.78,
+   "mean_prompt_tokens": 1244.7,
+   "mean_output_tokens": 182.2
+  },
+  "metrics": {
+   "calls": 92,
+   "median_s": 7.31,
+   "mean_prompt_tokens": 1363.2,
+   "mean_output_tokens": 169.9
+  },
+  "log": {
+   "calls": 47,
+   "median_s": 4.89,
+   "mean_prompt_tokens": 1274.7,
+   "mean_output_tokens": 71.4
+  },
+  "change": {
+   "calls": 66,
+   "median_s": 5.7,
+   "mean_prompt_tokens": 1369.6,
+   "mean_output_tokens": 101.6
+  },
+  "critic": {
+   "calls": 90,
+   "median_s": 5.44,
+   "mean_prompt_tokens": 1543.6,
+   "mean_output_tokens": 78.8
+  },
+  "remediation": {
+   "calls": 34,
+   "median_s": 5.38,
+   "mean_prompt_tokens": 1932.7,
+   "mean_output_tokens": 68.5
+  }
+ },
+ "per_incident": {
+  "214": {
+   "model_ms": 46418.4,
+   "in": 11791,
+   "out": 882,
+   "calls": 8,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "frontend-proxy"
+  },
+  "213": {
+   "model_ms": 54719.799999999996,
+   "in": 12798,
+   "out": 1195,
+   "calls": 8,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "frontend"
+  },
+  "212": {
+   "model_ms": 45861.6,
+   "in": 12120,
+   "out": 839,
+   "calls": 8,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "frontend"
+  },
+  "211": {
+   "model_ms": 43950.59999999999,
+   "in": 10510,
+   "out": 893,
+   "calls": 7,
+   "tools": 3,
+   "alertname": "AiraServiceDown",
+   "service": "recommendation"
+  },
+  "210": {
+   "model_ms": 50812.700000000004,
+   "in": 12206,
+   "out": 1063,
+   "calls": 8,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "payment"
+  },
+  "209": {
+   "model_ms": 29600.5,
+   "in": 7094,
+   "out": 578,
+   "calls": 5,
+   "tools": 3,
+   "alertname": "AiraHighErrorRate",
+   "service": "checkout"
+  },
+  "208": {
+   "model_ms": 53578.299999999996,
+   "in": 12180,
+   "out": 1158,
+   "calls": 8,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "payment"
+  },
+  "207": {
+   "model_ms": 46242.9,
+   "in": 11775,
+   "out": 854,
+   "calls": 8,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "checkout"
+  },
+  "204": {
+   "model_ms": 31538.0,
+   "in": 7097,
+   "out": 556,
+   "calls": 5,
+   "tools": 3,
+   "alertname": "AiraHighErrorRate",
+   "service": "checkout"
+  },
+  "203": {
+   "model_ms": 37426.1,
+   "in": 9799,
+   "out": 740,
+   "calls": 7,
+   "tools": 3,
+   "alertname": "AiraHighErrorRate",
+   "service": "payment"
+  },
+  "202": {
+   "model_ms": 54722.09999999999,
+   "in": 13281,
+   "out": 1179,
+   "calls": 9,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "checkout"
+  },
+  "201": {
+   "model_ms": 38062.1,
+   "in": 9038,
+   "out": 702,
+   "calls": 6,
+   "tools": 3,
+   "alertname": "AiraOperationFailing",
+   "service": "payment"
+  },
+  "178": {
+   "model_ms": 55104.2,
+   "in": 13020,
+   "out": 1056,
+   "calls": 9,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "payment"
+  },
+  "177": {
+   "model_ms": 57286.9,
+   "in": 14016,
+   "out": 1085,
+   "calls": 10,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "checkout"
+  },
+  "176": {
+   "model_ms": 43849.600000000006,
+   "in": 10995,
+   "out": 744,
+   "calls": 7,
+   "tools": 3,
+   "alertname": "AiraHighErrorRate",
+   "service": "checkout"
+  },
+  "175": {
+   "model_ms": 50051.600000000006,
+   "in": 11818,
+   "out": 893,
+   "calls": 8,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "payment"
+  },
+  "170": {
+   "model_ms": 48227.3,
+   "in": 10289,
+   "out": 961,
+   "calls": 7,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "frontend-proxy"
+  },
+  "169": {
+   "model_ms": 46674.00000000001,
+   "in": 10592,
+   "out": 884,
+   "calls": 7,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "frontend"
+  },
+  "168": {
+   "model_ms": 55529.799999999996,
+   "in": 13570,
+   "out": 992,
+   "calls": 9,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "frontend"
+  },
+  "167": {
+   "model_ms": 47278.7,
+   "in": 10372,
+   "out": 894,
+   "calls": 7,
+   "tools": 3,
+   "alertname": "AiraServiceDown",
+   "service": "recommendation"
+  },
+  "166": {
+   "model_ms": 50753.299999999996,
+   "in": 12886,
+   "out": 881,
+   "calls": 9,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "payment"
+  },
+  "165": {
+   "model_ms": 69423.59999999999,
+   "in": 15360,
+   "out": 1414,
+   "calls": 11,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "checkout"
+  },
+  "164": {
+   "model_ms": 43505.3,
+   "in": 9780,
+   "out": 818,
+   "calls": 7,
+   "tools": 3,
+   "alertname": "AiraHighErrorRate",
+   "service": "checkout"
+  },
+  "163": {
+   "model_ms": 40311.700000000004,
+   "in": 8958,
+   "out": 731,
+   "calls": 6,
+   "tools": 3,
+   "alertname": "AiraHighErrorRate",
+   "service": "payment"
+  },
+  "162": {
+   "model_ms": 41376.600000000006,
+   "in": 10427,
+   "out": 793,
+   "calls": 7,
+   "tools": 3,
+   "alertname": "AiraHighErrorRate",
+   "service": "payment"
+  },
+  "161": {
+   "model_ms": 34853.799999999996,
+   "in": 7424,
+   "out": 692,
+   "calls": 5,
+   "tools": 3,
+   "alertname": "AiraOperationFailing",
+   "service": "payment"
+  },
+  "160": {
+   "model_ms": 62954.60000000001,
+   "in": 15004,
+   "out": 1227,
+   "calls": 11,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "checkout"
+  },
+  "159": {
+   "model_ms": 41932.99999999999,
+   "in": 9745,
+   "out": 745,
+   "calls": 7,
+   "tools": 3,
+   "alertname": "AiraHighErrorRate",
+   "service": "checkout"
+  },
+  "158": {
+   "model_ms": 52121.6,
+   "in": 10977,
+   "out": 1058,
+   "calls": 8,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "checkout"
+  },
+  "157": {
+   "model_ms": 49336.4,
+   "in": 9952,
+   "out": 941,
+   "calls": 7,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "payment"
+  },
+  "156": {
+   "model_ms": 44902.100000000006,
+   "in": 9774,
+   "out": 806,
+   "calls": 7,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "payment"
+  },
+  "155": {
+   "model_ms": 46123.4,
+   "in": 9808,
+   "out": 914,
+   "calls": 7,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "checkout"
+  },
+  "154": {
+   "model_ms": 26346.0,
+   "in": 5557,
+   "out": 489,
+   "calls": 4,
+   "tools": 0,
+   "alertname": "AiraHighCpu",
+   "service": "ad"
+  },
+  "151": {
+   "model_ms": 24598.5,
+   "in": 5142,
+   "out": 456,
+   "calls": 4,
+   "tools": 3,
+   "alertname": "AiraHighErrorRate",
+   "service": "frontend-proxy"
+  },
+  "150": {
+   "model_ms": 45086.9,
+   "in": 10040,
+   "out": 827,
+   "calls": 7,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "frontend"
+  },
+  "149": {
+   "model_ms": 42912.09999999999,
+   "in": 10058,
+   "out": 751,
+   "calls": 7,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "frontend"
+  },
+  "148": {
+   "model_ms": 36835.6,
+   "in": 8246,
+   "out": 642,
+   "calls": 6,
+   "tools": 3,
+   "alertname": "AiraServiceDown",
+   "service": "recommendation"
+  },
+  "147": {
+   "model_ms": 41138.4,
+   "in": 8377,
+   "out": 569,
+   "calls": 6,
+   "tools": 3,
+   "alertname": "AiraHighCpu",
+   "service": "grafana"
+  },
+  "146": {
+   "model_ms": 51475.899999999994,
+   "in": 11598,
+   "out": 898,
+   "calls": 9,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "payment"
+  },
+  "145": {
+   "model_ms": 44017.4,
+   "in": 10526,
+   "out": 842,
+   "calls": 8,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "checkout"
+  },
+  "144": {
+   "model_ms": 40789.4,
+   "in": 9759,
+   "out": 723,
+   "calls": 7,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "payment"
+  },
+  "143": {
+   "model_ms": 45994.7,
+   "in": 10741,
+   "out": 844,
+   "calls": 8,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "checkout"
+  },
+  "142": {
+   "model_ms": 52465.6,
+   "in": 8559,
+   "out": 627,
+   "calls": 6,
+   "tools": 3,
+   "alertname": "AiraHighCpu",
+   "service": "grafana"
+  },
+  "141": {
+   "model_ms": 30499.4,
+   "in": 6965,
+   "out": 607,
+   "calls": 5,
+   "tools": 3,
+   "alertname": "AiraOperationFailing",
+   "service": "checkout"
+  },
+  "140": {
+   "model_ms": 42371.299999999996,
+   "in": 9957,
+   "out": 843,
+   "calls": 7,
+   "tools": 4,
+   "alertname": "AiraOperationFailing",
+   "service": "payment"
+  },
+  "139": {
+   "model_ms": 45262.700000000004,
+   "in": 9833,
+   "out": 983,
+   "calls": 7,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "checkout"
+  },
+  "138": {
+   "model_ms": 28455.199999999997,
+   "in": 6803,
+   "out": 532,
+   "calls": 5,
+   "tools": 3,
+   "alertname": "AiraHighErrorRate",
+   "service": "payment"
+  },
+  "137": {
+   "model_ms": 38891.4,
+   "in": 8509,
+   "out": 781,
+   "calls": 6,
+   "tools": 3,
+   "alertname": "AiraHighCpu",
+   "service": "ad"
+  },
+  "136": {
+   "model_ms": 25450.799999999996,
+   "in": 5560,
+   "out": 486,
+   "calls": 4,
+   "tools": 2,
+   "alertname": "AiraHighCpu",
+   "service": "ad"
+  },
+  "133": {
+   "model_ms": 25243.399999999998,
+   "in": 5566,
+   "out": 460,
+   "calls": 4,
+   "tools": 2,
+   "alertname": "AiraHighCpu",
+   "service": "ad"
+  },
+  "130": {
+   "model_ms": 25913.6,
+   "in": 5358,
+   "out": 558,
+   "calls": 4,
+   "tools": 3,
+   "alertname": "AiraOperationFailing",
+   "service": "checkout"
+  },
+  "129": {
+   "model_ms": 28355.4,
+   "in": 6919,
+   "out": 530,
+   "calls": 5,
+   "tools": 3,
+   "alertname": "AiraOperationFailing",
+   "service": "payment"
+  },
+  "128": {
+   "model_ms": 45971.6,
+   "in": 9884,
+   "out": 996,
+   "calls": 7,
+   "tools": 4,
+   "alertname": "AiraHighErrorRate",
+   "service": "checkout"
+  },
+  "127": {
+   "model_ms": 31194.100000000006,
+   "in": 6832,
+   "out": 585,
+   "calls": 5,
+   "tools": 3,
+   "alertname": "AiraHighErrorRate",
+   "service": "payment"
+  },
+  "126": {
+   "model_ms": 24450.5,
+   "in": 5566,
+   "out": 449,
+   "calls": 4,
+   "tools": 2,
+   "alertname": "AiraHighCpu",
+   "service": "ad"
+  },
+  "118": {
+   "model_ms": 22791.0,
+   "in": 5206,
+   "out": 374,
+   "calls": 4,
+   "tools": 2,
+   "alertname": "AiraHighCpu",
+   "service": "ad"
+  },
+  "115": {
+   "model_ms": 26245.200000000004,
+   "in": 5290,
+   "out": 481,
+   "calls": 4,
+   "tools": 2,
+   "alertname": "AiraHighCpu",
+   "service": "ad"
+  }
+ }
+}

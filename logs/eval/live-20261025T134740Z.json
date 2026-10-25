@@ -1,0 +1,146 @@
+{
+ "generated_at": "20261025T134740Z",
+ "dry_run": false,
+ "elapsed_s": 1676.5,
+ "results": [
+  {
+   "scenario": "payment-failure",
+   "alertname": "AiraOperationFailing",
+   "service": "payment",
+   "started_at": "2026-10-25T13:19:44.104708+00:00",
+   "incident_id": 225,
+   "detection_s": 185.4,
+   "investigation_s": 255.3,
+   "cause": "The payment service is failing due to invalid tokens being sent.",
+   "rounds": 2,
+   "prior_cases": [
+    178,
+    129,
+    93
+   ],
+   "proposed": null,
+   "action_correct": false
+  },
+  {
+   "scenario": "cart-failure",
+   "alertname": "AiraOperationFailing",
+   "service": "cart",
+   "started_at": "2026-10-25T13:30:33.418475+00:00",
+   "incident_id": 226,
+   "detection_s": 318.8,
+   "investigation_s": 74.4,
+   "cause": "The cartFailure feature flag set to 100% is causing all EmptyCart operations to fail.",
+   "rounds": 2,
+   "prior_cases": [
+    84,
+    158,
+    165
+   ],
+   "proposed": {
+    "action": "reset_feature_flag",
+    "target": "cart",
+    "params": {
+     "flag": "cartFailure",
+     "to_variant": "off"
+    },
+    "risk": "low"
+   },
+   "action_correct": true,
+   "match_detail": "matches ground truth",
+   "executed": true,
+   "recovery_s": 2.0,
+   "result_ok": true,
+   "verification": "not_yet",
+   "verification_detail": "waiting up to 360s for the alert to clear"
+  },
+  {
+   "scenario": "product-catalog-failure",
+   "alertname": "AiraHighErrorRate",
+   "service": "product-catalog",
+   "started_at": "2026-10-25T13:37:39.245848+00:00",
+   "incident_id": 229,
+   "detection_s": 173.1,
+   "investigation_s": 50.2,
+   "cause": "The productCatalogFailure feature flag being on is causing the high error rate.",
+   "rounds": 1,
+   "prior_cases": [
+    164,
+    176,
+    96
+   ],
+   "proposed": {
+    "action": "reset_feature_flag",
+    "target": "product-catalog",
+    "params": {
+     "flag": "productCatalogFailure",
+     "to_variant": "off"
+    },
+    "risk": "low"
+   },
+   "action_correct": true,
+   "match_detail": "matches ground truth",
+   "executed": true,
+   "recovery_s": 2.1,
+   "result_ok": true,
+   "verification": "not_yet",
+   "verification_detail": "waiting up to 360s for the alert to clear"
+  },
+  {
+   "scenario": "high-cpu",
+   "alertname": "AiraHighCpu",
+   "service": "ad",
+   "started_at": "2026-10-25T13:41:54.781054+00:00",
+   "incident_id": 232,
+   "detection_s": 75.2,
+   "investigation_s": 62.4,
+   "cause": "adHighCpu feature flag is on for service ad.",
+   "rounds": 1,
+   "prior_cases": [
+    219,
+    118,
+    85
+   ],
+   "proposed": {
+    "action": "reset_feature_flag",
+    "target": "ad",
+    "params": {
+     "flag": "adHighCpu",
+     "to_variant": "off"
+    },
+    "risk": "low"
+   },
+   "action_correct": true,
+   "match_detail": "matches ground truth",
+   "executed": true,
+   "recovery_s": 2.1,
+   "result_ok": true,
+   "verification": "not_yet",
+   "verification_detail": "waiting up to 120s for the alert to clear"
+  },
+  {
+   "scenario": "service-down",
+   "alertname": "AiraServiceDown",
+   "service": "recommendation",
+   "started_at": "2026-10-25T13:44:51.364523+00:00",
+   "incident_id": 233,
+   "detection_s": 75.4,
+   "investigation_s": 62.3,
+   "cause": "The recommendation service experienced a resource exhaustion issue leading to its shutdown.",
+   "rounds": 2,
+   "prior_cases": [],
+   "proposed": {
+    "action": "restart_container",
+    "target": "recommendation",
+    "params": {},
+    "risk": "medium"
+   },
+   "action_correct": true,
+   "match_detail": "matches ground truth",
+   "executed": true,
+   "recovery_s": 2.0,
+   "result_ok": true,
+   "verification": "not_yet",
+   "verification_detail": "waiting up to 90s for the alert to clear"
+  }
+ ]
+}
