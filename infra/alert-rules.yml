@@ -96,3 +96,77 @@ groups:
         annotations:
           summary: "{{ $labels.service_name }} is down"
           description: "No container metrics from {{ $labels.service_name }} for over 45 seconds, although it was running within the last 30 minutes. The container has stopped or been removed."
+
+      # Latency, judged against the service's own recent past rather than a fixed number.
+      #
+      # An absolute threshold cannot work here. Measured on 2026-10-25 with every fault cleared,
+      # checkout/PlaceOrder sits at the top histogram bucket (15000 ms) permanently - it fans out
+      # to payment, shipping, email and currency, so it is simply the slowest operation in the
+      # demo - while every other service sits between 1.9 ms and 42 ms. Any threshold low enough
+      # to catch a 5-second slowdown on shipping (normally 6.5 ms) would fire on checkout forever.
+      # Comparing each service to itself 15 minutes ago handles both: a service that is always
+      # slow has a ratio of 1, and one that just got slow has a large one.
+      #
+      # The 500 ms floor stops a service going from 1.9 ms to 6 ms raising a page, and the traffic
+      # guard keeps a service with almost no requests from alerting on one unlucky span.
+      # Limitation: for the first 15 minutes after a cold start there is no baseline, so this rule
+      # cannot fire. AiraServiceDown has the same shape of dependency on history.
+      - alert: AiraHighLatency
+        expr: |
+          (
+            histogram_quantile(0.95, sum by (service_name, le) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind="SPAN_KIND_SERVER", service_name!~"aira-.*", span_name!~".*/EventStream"}[3m])))
+            /
+            histogram_quantile(0.95, sum by (service_name, le) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind="SPAN_KIND_SERVER", service_name!~"aira-.*", span_name!~".*/EventStream"}[10m] offset 15m)))
+          ) > 3
+          and
+          histogram_quantile(0.95, sum by (service_name, le) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind="SPAN_KIND_SERVER", service_name!~"aira-.*", span_name!~".*/EventStream"}[3m]))) > 500
+          and
+          sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", service_name!~"aira-.*"}[3m])) > 0.02
+        for: 30s
+        keep_firing_for: 2m
+        labels:
+          severity: warning
+          aira_signal: latency
+        annotations:
+          summary: "Latency rose sharply on {{ $labels.service_name }}"
+          description: "{{ $labels.service_name }}: p95 server latency is {{ $value | printf \"%.1f\" }}x its level 15 minutes ago and above 500 ms."
+
+      # Memory growth, also relative, and for the same reason: this stack idles close to its
+      # limits. Measured on 2026-10-25 with no fault injected, kafka sat at 94.2% of its limit,
+      # opensearch at 89.9% and accounting at 83.5%. A rule that fires above 80% of limit would
+      # page on three healthy infrastructure containers before any application fault occurred.
+      # Growth against the container's own baseline is what distinguishes a leak from a service
+      # that simply runs full, and the 75% floor keeps a container that doubles from 2% to 4% of
+      # a large limit out of it.
+      #
+      # Both numbers are measured, not chosen. With emailMemoryLeak running, email reached 1.484x
+      # its 15-minute baseline at 91.8% of its limit; every other container above 75% of limit was
+      # flat (grafana 1.007x, astronomy-db 1.005x, fraud-detection 1.004x, ad 1.002x) and the next
+      # fastest grower anywhere was load-generator at 1.086x and only 40% of its limit. 1.25 sits
+      # in the empty gap between 1.086 and 1.484. An earlier 1.5 threshold missed the real leak by
+      # 0.014 while email sat at 92% of its limit - a miss that mattered, since that is the point
+      # at which the container is about to be killed.
+      - alert: AiraMemoryGrowth
+        expr: |
+          label_replace(
+            (
+              sum by (container_name) (container_memory_usage_total_bytes)
+              /
+              sum by (container_name) (avg_over_time(container_memory_usage_total_bytes[10m] offset 15m))
+            ) > 1.25
+            and
+            (
+              100 * sum by (container_name) (container_memory_usage_total_bytes)
+              /
+              sum by (container_name) (container_memory_usage_limit_bytes)
+            ) > 75,
+            "service_name", "$1", "container_name", "(.*)"
+          )
+        for: 60s
+        keep_firing_for: 2m
+        labels:
+          severity: warning
+          aira_signal: memory
+        annotations:
+          summary: "Memory growing on {{ $labels.service_name }}"
+          description: "{{ $labels.service_name }} is using {{ $value | printf \"%.1f\" }}x the memory it used 15 minutes ago, and is above 60% of its container limit."
