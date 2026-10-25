@@ -3,211 +3,321 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AIRA — Incident Console</title>
+<title>Console · AIRA</title>
+<link rel="stylesheet" href="/style.css">
 <style>
-  /* One accent, neutral everything else. Colour appears only where it carries meaning:
-     red for a firing incident or an identified cause, amber for a deliberate skip, green for
-     resolved. The investigation is drawn as a single vertical timeline rather than a stack of
-     bordered cards - one metaphor instead of three. */
-  :root {
-    --bg:#fcfcfd; --panel:#ffffff; --sunk:#f6f7f9;
-    --line:#e8eaee; --line2:#d7dae1;
-    --ink:#101319; --ink2:#5a6170; --ink3:#9aa0ad;
-    --accent:#4a51d6; --accent-bg:#f0f1fe;
-    --red:#c0392f; --red-bg:#fdf2f1;
-    --green:#1f7a45;
-    --amber:#99700f;
+  /* Console-specific layout. Everything shared - palette, buttons, cards, the pipeline strip,
+     the round groups - lives in style.css so the three pages cannot drift apart. */
+  body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr) 316px;
+    min-height: 0;
   }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg:#0b0d11; --panel:#111419; --sunk:#171a21;
-      --line:#20242c; --line2:#2d323c;
-      --ink:#e9ebf0; --ink2:#99a0ad; --ink3:#666d7a;
-      --accent:#8d93f5; --accent-bg:#171a2e;
-      --red:#f1796a; --red-bg:#231513;
-      --green:#5ac684;
-      --amber:#d6a648;
-    }
+  @media (max-width: 1280px) { main { grid-template-columns: 272px minmax(0, 1fr); }
+                               .side { display: none; } }
+  @media (max-width: 900px)  { main { grid-template-columns: 1fr; }
+                               aside { display: none; } }
+
+  aside { border-right: 1px solid var(--line); background: var(--nav); overflow-y: auto; min-height: 0; }
+  article { overflow-y: auto; min-height: 0; background: var(--bg); }
+  .side { border-left: 1px solid var(--line); background: var(--nav); overflow-y: auto; min-height: 0; }
+  .side-in { padding: 20px 18px 40px; }
+
+  .aside-h {
+    position: sticky; top: 0; z-index: 2;
+    padding: 12px 16px; background: var(--nav);
+    border-bottom: 1px solid var(--line);
+    font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3);
   }
-  :root[data-theme="dark"] {
-    --bg:#0b0d11; --panel:#111419; --sunk:#171a21;
-    --line:#20242c; --line2:#2d323c;
-    --ink:#e9ebf0; --ink2:#99a0ad; --ink3:#666d7a;
-    --accent:#8d93f5; --accent-bg:#171a2e;
-    --red:#f1796a; --red-bg:#231513;
-    --green:#5ac684;
-    --amber:#d6a648;
+  .aside-h b { color: var(--ink); font-weight: 650; }
+
+  /* ---- incident list ---- */
+  .row { padding: 11px 15px; border-bottom: 1px solid var(--line); cursor: pointer;
+         border-left: 2px solid transparent; }
+  .row:hover { background: var(--panel); }
+  .row.on { background: var(--panel-2); border-left-color: var(--accent); }
+  .row-1 { display: flex; align-items: center; gap: 8px; }
+  .st { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); flex: none; }
+  .st.firing { background: var(--red); box-shadow: 0 0 0 3px var(--red-bg); }
+  .st.resolved { background: var(--green); box-shadow: 0 0 0 3px var(--green-bg); }
+  .row-svc { font-size: 13.5px; font-weight: 650; letter-spacing: -.01em; }
+  .row-ago { margin-left: auto; font-size: 11px; color: var(--ink-3); }
+  .row-2 { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+  /* One tick per agent, in pipeline order: the shape of the investigation at list size. */
+  .bars { display: flex; gap: 3px; margin-top: 8px; }
+  .bars i { height: 3px; flex: 1; border-radius: 2px; background: var(--line); }
+  .bars i.done { background: var(--green); }
+  .bars i.skipped { background: var(--line-2); }
+  .bars i.error { background: var(--red); }
+  .bars i.running { background: var(--amber); }
+  .row-wait { margin-top: 7px; font-size: 11px; font-weight: 650; color: var(--amber);
+              letter-spacing: .03em; text-transform: uppercase; }
+
+  /* ---- detail page ---- */
+  .page-in { padding: 24px 28px 70px; max-width: 980px; }
+  .eyebrow { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .badge {
+    font-size: 10.5px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px;
   }
+  .badge.firing { background: var(--red-bg); color: var(--red); }
+  .badge.resolved { background: var(--green-bg); color: var(--green); }
+  .dim { font-size: 12px; color: var(--ink-3); }
+  h1.inc { margin: 0 0 7px; font-size: 23px; font-weight: 680; letter-spacing: -.025em; }
+  h1.inc .alert { font-weight: 400; color: var(--ink-2); font-size: 16px; margin-left: 9px;
+                  font-family: var(--mono); letter-spacing: 0; }
+  .why { font-size: 14px; color: var(--ink-2); margin: 0 0 15px; max-width: 72ch; }
+  .facts { font-size: 12.5px; color: var(--ink-3); padding-bottom: 20px; }
+  .facts b { color: var(--ink-2); font-weight: 650; }
+  .facts span + span::before { content: "\00b7"; margin: 0 9px; color: var(--line-2); }
 
-  * { box-sizing:border-box; }
-  html,body { height:100%; }
-  body {
-    margin:0; background:var(--bg); color:var(--ink); display:flex; flex-direction:column;
-    font:14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
-    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  .sec { margin-top: 28px; }
+  .sec:first-of-type { margin-top: 0; }
+
+  .nothing { padding: 90px 30px; text-align: center; color: var(--ink-3); }
+  .nothing b { display: block; font-size: 15px; color: var(--ink-2); margin-bottom: 5px; }
+  .nothing span { font-size: 13px; }
+
+  /* ---- root cause conclusion ----
+     The answer, given its own panel rather than a line in a list. It sits above the evidence
+     because that is the order it is read in, and it always says who established it and whether it
+     was reviewed: an unreviewed hypothesis and an accepted one are not the same claim. */
+  .conc {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--ink-3);
+    border-radius: var(--radius);
+    background: var(--panel);
+    padding: 15px 17px 16px;
+    box-shadow: var(--shadow);
   }
-  .mono { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-          font-variant-numeric:tabular-nums; }
-
-  header { display:flex; align-items:center; gap:18px; height:54px; padding:0 22px;
-           border-bottom:1px solid var(--line); background:var(--panel); flex:none; }
-  .logo { font-size:15px; font-weight:600; letter-spacing:-.02em; }
-  .logo span { color:var(--ink3); font-weight:400; margin-left:8px; font-size:13px; }
-  .hd { margin-left:auto; display:flex; align-items:center; gap:16px; }
-  .sig { display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink2); }
-  .sig i { width:6px; height:6px; border-radius:50%; background:var(--green); }
-  .sig.off i { background:var(--red); }
-  .sig.off { color:var(--red); }
-  .tbtn { background:none; border:0; color:var(--ink3); font-size:12.5px; cursor:pointer; padding:4px; }
-  .tbtn:hover { color:var(--ink); }
-
-  main { flex:1; display:grid; grid-template-columns:272px minmax(0,1fr) 316px; min-height:0; }
-  aside { border-right:1px solid var(--line); background:var(--panel); overflow-y:auto; min-height:0; }
-  .aside-h { position:sticky; top:0; z-index:2; background:var(--panel); padding:14px 20px 10px;
-             font-size:12px; color:var(--ink3); border-bottom:1px solid var(--line); }
-  .aside-h b { color:var(--ink); font-weight:600; }
-  article { overflow-y:auto; min-height:0; }
-
-  /* ---- incident list: quiet, scannable ---- */
-  .row { padding:13px 20px; cursor:pointer; border-bottom:1px solid var(--line); }
-  .row:hover { background:var(--sunk); }
-  .row.on { background:var(--accent-bg); }
-  .row-1 { display:flex; align-items:baseline; gap:8px; }
-  .st { width:6px; height:6px; border-radius:50%; background:var(--ink3); flex:none;
-        position:relative; top:-1px; }
-  .st.firing { background:var(--red); }
-  .st.resolved { background:var(--green); }
-  .row-svc { font-weight:600; font-size:14px; letter-spacing:-.01em; }
-  .row-ago { margin-left:auto; font-size:11.5px; color:var(--ink3); }
-  .row-2 { font-size:12.5px; color:var(--ink2); margin-top:1px; }
-  .bars { display:flex; gap:2px; margin-top:8px; }
-  .bars i { height:2px; flex:1; background:var(--line2); border-radius:1px; }
-  .bars i.done { background:var(--accent); }
-  .bars i.running { background:var(--accent); opacity:.4; }
-  .bars i.skipped { background:var(--amber); opacity:.35; }
-  .bars i.error { background:var(--red); }
-
-  /* ---- detail ---- */
-  .page { max-width:760px; padding:34px 40px 80px; }
-
-  /* ---- right rail: the answer first, then the numbers behind it ---- */
-  .side { border-left:1px solid var(--line); background:var(--panel); overflow-y:auto; min-height:0; }
-  .side-in { padding:26px 22px 60px; }
-  .sh { font-size:11px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
-        color:var(--ink3); margin:0 0 11px; }
-  .verdict { padding:15px 16px; border-radius:9px; background:var(--sunk); margin-bottom:28px; }
-  .verdict.found { background:var(--red-bg); }
-  .verdict p { margin:0; font-size:14.5px; line-height:1.5; font-weight:500; }
-  .verdict.found p { color:var(--red); }
-  .verdict .by { display:block; margin-top:7px; font-size:12px; color:var(--ink3); font-weight:400; }
-  .verdict.none p { color:var(--ink2); font-weight:400; font-size:13.5px; }
-
-  .sig-row { display:flex; align-items:baseline; gap:10px; padding:9px 0;
-             border-bottom:1px solid var(--line); }
-  .sig-row:last-child { border-bottom:0; }
-  .sig-k { font-size:12.5px; color:var(--ink2); flex:none; width:96px; }
-  .sig-v { font-size:14px; font-weight:600; letter-spacing:-.01em; }
-  .sig-v.hot { color:var(--red); }
-  .sig-b { margin-left:auto; font-size:11.5px; color:var(--ink3); }
-  .opbox { margin-top:14px; padding:11px 13px; border-radius:7px; background:var(--sunk); }
-  .opbox .k { font-size:11.5px; color:var(--ink3); margin-bottom:3px; }
-  .opbox .v { font-size:12.5px; word-break:break-all; }
-  .side-note { margin-top:30px; padding-top:18px; border-top:1px solid var(--line);
-               font-size:12.5px; color:var(--ink3); line-height:1.6; }
-  .side-note b { display:block; color:var(--ink2); font-weight:600; margin-bottom:4px; font-size:12.5px; }
-  .eyebrow { display:flex; align-items:center; gap:9px; font-size:12px; margin-bottom:9px; }
-  .badge { font-size:11px; font-weight:600; letter-spacing:.02em; padding:2px 8px; border-radius:20px; }
-  .badge.firing { color:var(--red); background:var(--red-bg); }
-  .badge.resolved { color:var(--green); background:var(--sunk); }
-  .eyebrow .dim { color:var(--ink3); }
-  h1 { font-size:27px; font-weight:600; letter-spacing:-.025em; margin:0 0 7px; line-height:1.2; }
-  h1 .alert { color:var(--ink3); font-weight:400; }
-  .why { font-size:14.5px; color:var(--ink2); margin:0 0 20px; max-width:62ch; }
-  .facts { font-size:12.5px; color:var(--ink3); padding-bottom:22px; border-bottom:1px solid var(--line);
-           margin-bottom:4px; }
-  .facts b { color:var(--ink2); font-weight:500; }
-  .facts span + span::before { content:"·"; margin:0 9px; color:var(--line2); }
-
-  /* ---- the timeline: one line, dots, generous space ---- */
-  .tl { position:relative; padding-left:26px; }
-  .tl::before { content:""; position:absolute; left:4px; top:26px; bottom:22px; width:1.5px;
-                background:var(--line); }
-  .ev { position:relative; padding:22px 0 4px; }
-  .ev::before { content:""; position:absolute; left:-26px; top:27px; width:9px; height:9px;
-                border-radius:50%; background:var(--line2); box-shadow:0 0 0 4px var(--bg); }
-  .ev.done::before { background:var(--accent); }
-  .ev.running::before { background:var(--accent); animation:beat 1.5s ease-in-out infinite; }
-  .ev.skipped::before { background:var(--bg); border:1.5px dashed var(--amber); width:11px; height:11px; left:-27px; }
-  .ev.error::before { background:var(--red); }
-  @keyframes beat { 0%,100%{box-shadow:0 0 0 4px var(--bg), 0 0 0 4px var(--accent-bg)}
-                    50%{box-shadow:0 0 0 4px var(--bg), 0 0 0 9px var(--accent-bg)} }
-  @media (prefers-reduced-motion: reduce) { .ev.running::before { animation:none; } }
-
-  .ev-h { display:flex; align-items:baseline; gap:10px; }
-  .ev-n { font-size:15px; font-weight:600; letter-spacing:-.015em; }
-  .ev.skipped .ev-n { color:var(--ink2); font-weight:500; }
-  .ev-t { margin-left:auto; font-size:12px; color:var(--ink3); }
-  .ev-from { font-size:12.5px; color:var(--ink3); margin-top:2px; }
-
-  .says { margin:11px 0 0; padding:0; list-style:none; }
-  .says li { position:relative; padding-left:16px; margin-bottom:10px; font-size:14px; }
-  .says li:last-child { margin-bottom:0; }
-  .says li::before { content:""; position:absolute; left:0; top:8px; width:5px; height:5px;
-                     border-radius:50%; background:var(--line2); }
-  .says li.key::before { background:var(--red); }
-  .says li.note::before { background:var(--amber); }
-  .says .q { display:block; margin-top:3px; font-size:12px; color:var(--ink3); }
-  .says .cause { color:var(--red); font-weight:600; font-size:11px; letter-spacing:.03em;
-                 text-transform:uppercase; margin-left:8px; }
-  .plain { font-size:14px; color:var(--ink2); margin-top:9px; }
-  .plain b { color:var(--ink); font-weight:600; }
-  .skipwhy { font-size:13.5px; color:var(--amber); margin-top:3px; }
-  .failwhy { font-size:13.5px; color:var(--red); margin-top:7px; }
-
-  .peek { margin-top:11px; }
-  .peek > summary { cursor:pointer; font-size:12.5px; color:var(--ink3); list-style:none;
-                    display:inline-block; }
-  .peek > summary::-webkit-details-marker { display:none; }
-  .peek > summary::before { content:"▸ "; }
-  .peek[open] > summary::before { content:"▾ "; }
-  .peek > summary:hover { color:var(--ink2); }
-  .peek pre { margin:10px 0 0; padding:14px 16px; background:var(--sunk); border-radius:7px;
-              font-size:12px; line-height:1.6; color:var(--ink2); white-space:pre-wrap;
-              word-break:break-word; max-height:280px; overflow:auto; }
-
-  .pending-note { margin-top:34px; padding-top:20px; border-top:1px solid var(--line);
-                  font-size:13px; color:var(--ink3); max-width:62ch; }
-  .pending-note b { display:block; color:var(--ink2); font-weight:600; margin-bottom:3px; }
-
-  .nothing { height:72vh; display:flex; flex-direction:column; align-items:center;
-             justify-content:center; gap:6px; color:var(--ink3); text-align:center; padding:24px; }
-  .nothing b { color:var(--ink2); font-size:15px; font-weight:600; }
-  .nothing span { font-size:13.5px; max-width:360px; line-height:1.6; }
-
-  footer { flex:none; display:flex; gap:16px; padding:9px 22px; border-top:1px solid var(--line);
-           background:var(--panel); font-size:11.5px; color:var(--ink3); }
-
-  @media (max-width:1200px) {
-    main { grid-template-columns:260px minmax(0,1fr); }
-    .side { grid-column:1 / -1; border-left:0; border-top:1px solid var(--line); overflow:visible; }
-    .side-in { padding:22px 24px 40px; max-width:760px; }
+  .conc.accepted { border-left-color: var(--purple); }
+  .conc.unconfirmed { border-left-color: var(--amber); }
+  .conc-k {
+    font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; font-weight: 650;
+    color: var(--ink-3);
   }
-  @media (max-width:900px) {
-    main { grid-template-columns:1fr; }
-    aside { max-height:168px; border-right:0; border-bottom:1px solid var(--line); }
-    .page { padding:24px 20px 40px; }
-  }
+  .conc.accepted .conc-k { color: var(--purple); }
+  .conc.unconfirmed .conc-k { color: var(--amber); }
+  .conc-t { margin: 7px 0 0; font-size: 15.5px; line-height: 1.45; font-weight: 550; color: var(--ink); }
+  .conc.none .conc-t { font-size: 13.5px; font-weight: 400; color: var(--ink-2); }
+  .conc-by { margin-top: 9px; font-size: 12px; color: var(--ink-3); }
+
+  /* ---- timeline inside a round ---- */
+  .tl { position: relative; padding-left: 24px; }
+  .tl::before { content: ""; position: absolute; left: 4px; top: 24px; bottom: 18px;
+                width: 1.5px; background: var(--line); }
+  .ev { position: relative; padding: 18px 0 4px; }
+  .ev::before { content: ""; position: absolute; left: -24px; top: 23px; width: 9px; height: 9px;
+                border-radius: 50%; background: var(--line-2);
+                box-shadow: 0 0 0 4px var(--panel); }
+  /* Each agent keeps its own colour on its dot and its name, in every round and on every page. */
+  .ev.done::before { background: var(--c, var(--accent)); }
+  .ev.done .ev-n { color: var(--c, var(--ink)); }
+  .ev.running::before { background: var(--amber); animation: beat 1.6s ease-in-out infinite; }
+  .ev.skipped::before { background: var(--panel); border: 1.5px dashed var(--line-2); }
+  .ev.error::before { background: var(--red); }
+  @keyframes beat { 0%,100% { box-shadow: 0 0 0 4px var(--panel), 0 0 0 4px var(--amber-bg); }
+                    50%     { box-shadow: 0 0 0 4px var(--panel), 0 0 0 9px var(--amber-bg); } }
+  @media (prefers-reduced-motion: reduce) { .ev.running::before { animation: none; } }
+
+  .ev-h { display: flex; align-items: baseline; gap: 10px; }
+  .ev-n { font-size: 14.5px; font-weight: 650; letter-spacing: -.015em; }
+  .ev.skipped .ev-n { color: var(--ink-3); font-weight: 500; }
+  .ev-t { margin-left: auto; font-size: 11.5px; color: var(--ink-3); font-family: var(--mono);
+          white-space: nowrap; }
+  .ev-from { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+
+  .says { margin: 10px 0 0; padding: 0; list-style: none; }
+  .says li { position: relative; padding-left: 15px; margin-bottom: 9px; font-size: 13.5px; }
+  .says li:last-child { margin-bottom: 0; }
+  .says li::before { content: ""; position: absolute; left: 0; top: 8px; width: 5px; height: 5px;
+                     border-radius: 50%; background: var(--line-2); }
+  .says li.key::before { background: var(--red); }
+  .says li.note::before { background: var(--amber); }
+  .says .q { display: block; margin-top: 4px; font-size: 11.5px; color: var(--ink-3);
+             font-family: var(--mono); word-break: break-word; }
+  .says .cause { color: var(--red); font-weight: 650; font-size: 10.5px; letter-spacing: .03em;
+                 text-transform: uppercase; margin-left: 8px; }
+  .plain { font-size: 13.5px; color: var(--ink-2); margin-top: 9px; }
+  .plain b { color: var(--ink); font-weight: 650; }
+  .skipwhy { font-size: 13px; color: var(--amber); margin-top: 3px; }
+  .failwhy { font-size: 13px; color: var(--red); margin-top: 7px; }
+
+  .hyp { margin: 10px 0 0; padding: 0 0 0 18px; font-size: 13.5px; }
+  .hyp li { margin-bottom: 10px; color: var(--ink-2); }
+  .hyp li.top { color: var(--ink); }
+  .hyp .hs { font-weight: 500; }
+  .hyp li.top .hs { font-weight: 650; }
+  .hyp .hm { display: block; margin-top: 2px; font-size: 11px; color: var(--ink-3); }
+  .hyp .q { display: block; margin-top: 4px; font-size: 11.5px; color: var(--ink-3);
+            font-family: var(--mono); word-break: break-word; }
+
+  .cv { display: inline-block; margin-top: 9px; padding: 3px 9px; border-radius: 999px;
+        font-size: 10.5px; font-weight: 650; letter-spacing: .03em; text-transform: uppercase; }
+  .cv.good { color: var(--green); background: var(--green-bg); }
+  .cv.bad  { color: var(--amber); background: var(--amber-bg); }
+
+  .ev.end::before { background: var(--ink-3); }
+  .ev.end.accepted::before { background: var(--green); }
+  .ev.end.insufficient::before { background: var(--amber); }
+  .ev.end .says li { font-weight: 550; }
+
+  .peek { margin-top: 11px; }
+  .peek > summary { cursor: pointer; font-size: 12px; color: var(--ink-3);
+                    list-style: none; display: inline-block; }
+  .peek > summary::-webkit-details-marker { display: none; }
+  .peek > summary::before { content: "\25b8\00a0"; }
+  .peek[open] > summary::before { content: "\25be\00a0"; }
+  .peek > summary:hover { color: var(--accent); }
+  .peek pre { margin: 8px 0 0; padding: 11px 13px; background: var(--sunk);
+              border: 1px solid var(--line); border-radius: var(--radius-s);
+              font-size: 11.5px; color: var(--ink-2);
+              white-space: pre-wrap; max-height: 230px; overflow: auto; line-height: 1.55; }
+
+  /* ---- right rail: references, not a second copy of the page ---- */
+  .opbox { margin-bottom: 8px; padding: 10px 12px; background: var(--panel);
+           border: 1px solid var(--line); border-radius: var(--radius-s); }
+  .opbox .k { font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase;
+              color: var(--ink-3); font-weight: 600; }
+  .opbox .v { font-size: 12px; margin-top: 4px; word-break: break-all; font-family: var(--mono); }
+  .opbox .v b { color: var(--red); font-weight: 650; }
+  .rail-sec { margin-top: 26px; }
+  .rail-kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; font-size: 12px; }
+  .rail-kv dt { color: var(--ink-3); }
+  .rail-kv dd { margin: 0; color: var(--ink-2); font-family: var(--mono); font-size: 11.5px;
+                word-break: break-all; }
+  .rail-links { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
+  .rail-links a { font-size: 12.5px; }
+
+  /* ---- remediation ----
+     The approval control is the one place on this console that changes the running system, so a
+     proposal awaiting a decision is the most prominent thing on the page, and a rejected or
+     failed action is rendered as visibly as a successful one. */
+  .act { border: 1px solid var(--line); border-radius: var(--radius); padding: 15px 17px;
+         margin-bottom: 11px; background: var(--panel); box-shadow: var(--shadow); }
+  .act.waiting { border-color: var(--amber); background: var(--amber-bg);
+                 box-shadow: var(--shadow-lift); }
+  .act.done { border-left: 3px solid var(--green); }
+  .act.failed, .act.refused { border-left: 3px solid var(--red); }
+  .act.rejected { border-left: 3px solid var(--ink-3); }
+  .act.declined { background: var(--panel-2); }
+  .act-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .act-n { font-size: 14.5px; font-weight: 650; letter-spacing: -.015em; }
+  .act-t { margin-left: auto; font-size: 11.5px; color: var(--ink-3); }
+  .act.waiting .act-t { color: var(--amber); font-weight: 650; }
+  .act-risk { font-size: 10px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase;
+              padding: 2px 7px; border-radius: 999px; }
+  .act-risk.low { color: var(--green); background: var(--green-bg); }
+  .act-risk.medium { color: var(--amber); background: var(--amber-bg); }
+  .act-risk.high { color: var(--red); background: var(--red-bg); }
+  .act-what { margin-top: 10px; font-size: 14px; }
+  .act-what code { font-family: var(--mono); font-size: 12.5px; background: var(--sunk);
+                   border: 1px solid var(--line); padding: 1px 6px; border-radius: 4px; }
+  .act-why { margin-top: 7px; font-size: 13px; color: var(--ink-2); }
+  .act-exp, .act-rev, .act-res, .act-ver { margin-top: 5px; font-size: 12px; color: var(--ink-3); }
+  .act-res { color: var(--ink-2); }
+  .act-ver { color: var(--green); }
+  .act-controls { margin-top: 14px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+  .act-note { font-size: 11.5px; color: var(--ink-3); }
+  .act-verify { margin-top: 12px; padding: 9px 12px; border-radius: var(--radius-s);
+                font-size: 12.5px; background: var(--panel-2); }
+  .act-verify b { margin-right: 6px; }
+  .act-verify.good { background: var(--green-bg); color: var(--green); }
+  .act-verify.bad { background: var(--red-bg); color: var(--red); }
+  .act-verify.warn { background: var(--amber-bg); color: var(--amber); }
+
+  /* ---- post-incident report ----
+     The document somebody reads after it is all over, so it is set as a document: wider measure,
+     real headings, tables that look like tables. It is the one part of this console that is meant
+     to be printed or sent to somebody who was not watching. */
+  .pm { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+        box-shadow: var(--shadow); overflow: hidden; }
+  .pm-h { display: flex; align-items: center; gap: 12px; padding: 13px 17px;
+          background: var(--panel-2); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .pm-h h3 { margin: 0; font-size: 14.5px; font-weight: 650; letter-spacing: -.015em; }
+  .pm-h .pm-when { font-size: 11.5px; color: var(--ink-3); font-family: var(--mono); }
+  .pm-h .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .pm-body { padding: 4px 22px 20px; max-height: 620px; overflow-y: auto; }
+  .pm-body h1 { font-size: 18px; font-weight: 680; letter-spacing: -.02em; margin: 18px 0 4px; }
+  .pm-body h2 { font-size: 13px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase;
+                color: var(--ink-3); margin: 22px 0 8px; padding-top: 14px;
+                border-top: 1px solid var(--line); }
+  .pm-body h2:first-of-type { border-top: 0; padding-top: 0; }
+  .pm-body h3 { font-size: 13.5px; font-weight: 650; margin: 14px 0 6px; color: var(--ink); }
+  .pm-body p { margin: 8px 0; font-size: 13.5px; line-height: 1.6; color: var(--ink-2); }
+  .pm-body p strong, .pm-body li strong { color: var(--ink); font-weight: 650; }
+  .pm-body ul { margin: 8px 0; padding-left: 20px; }
+  .pm-body li { font-size: 13.5px; line-height: 1.6; color: var(--ink-2); margin-bottom: 5px; }
+  .pm-body table { width: 100%; border-collapse: collapse; margin: 10px 0 4px; font-size: 12.5px; }
+  .pm-body th { text-align: left; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;
+                color: var(--ink-3); font-weight: 650; padding: 7px 10px;
+                border-bottom: 1px solid var(--line); }
+  .pm-body td { padding: 7px 10px; border-bottom: 1px solid var(--line); color: var(--ink-2);
+                vertical-align: top; }
+  .pm-body tr:last-child td { border-bottom: 0; }
+  .pm-body code { font-family: var(--mono); font-size: 12px; background: var(--sunk);
+                  border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
+  .pm-body blockquote { margin: 10px 0; padding: 9px 13px; border-left: 2px solid var(--line-2);
+                        background: var(--sunk); border-radius: 0 var(--radius-s) var(--radius-s) 0; }
+  .pm-body blockquote p { margin: 0; font-size: 12px; color: var(--ink-3); }
+  .pm-body hr { border: 0; border-top: 1px solid var(--line); margin: 20px 0 12px; }
+  .pm-pending { padding: 22px 17px; font-size: 13px; color: var(--ink-3); }
+
+  /* ---- execution trace ---- */
+  .tracebar { margin-top: 30px; padding-top: 18px; border-top: 1px solid var(--line);
+              display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .tracebtn { font: inherit; font-size: 12.5px; color: var(--ink-2); background: var(--panel-2);
+              border: 1px solid var(--line); border-radius: var(--radius-s);
+              padding: 7px 12px; cursor: pointer; transition: color .12s, border-color .12s; }
+  .tracebtn:hover { color: var(--ink); border-color: var(--line-2); }
+  .tracebtn.on { background: var(--accent-bg); border-color: transparent; color: var(--accent); }
+  .tracebtn b { font-weight: 650; margin-left: 6px; font-family: var(--mono); }
+  .tracelink { font-size: 12.5px; }
+  .trace { list-style: none; margin: 14px 0 0; padding: 0; }
+  .tr { display: grid; grid-template-columns: 58px 90px minmax(0, 1fr) auto 58px; gap: 10px;
+        align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line);
+        font-size: 12.5px; }
+  .tr-t { color: var(--ink-3); font-size: 10.5px; font-family: var(--mono); }
+  .tr-a { color: var(--ink-2); font-weight: 550; }
+  .tr-a i { color: var(--amber); font-style: normal; font-size: 10px; }
+  .tr-k { color: var(--ink); }
+  .tr-m { color: var(--ink-3); text-align: right; }
+  .tr-d { color: var(--ink-3); text-align: right; font-size: 10.5px; font-family: var(--mono); }
+  .tr.model .tr-k { color: var(--blue); }
+  .tr.tool .tr-k { color: var(--ink-2); }
+  .tr.flow .tr-k { font-weight: 650; }
+  .tr.agent .tr-k { color: var(--accent); }
+  .tr.warn .tr-k { color: var(--amber); }
+  .tr.bad .tr-k { color: var(--red); }
+  .ev-body { grid-column: 1 / -1; margin: 6px 0 2px; padding: 9px 11px; background: var(--sunk);
+             border: 1px solid var(--line); border-radius: var(--radius-s);
+             font-size: 11px; color: var(--ink-2);
+             white-space: pre-wrap; max-height: 190px; overflow: auto; line-height: 1.55;
+             font-family: var(--mono); }
+  @media (max-width: 900px) { .tr { grid-template-columns: 52px minmax(0, 1fr) auto; }
+                              .tr-m, .tr-d { display: none; }
+                              .page-in { padding: 18px 16px 60px; } }
+
+  footer { display: none; }
 </style>
 </head>
 <body>
-
-<header>
-  <div class="logo">AIRA<span>Incident Console</span></div>
-  <div class="hd">
-    <div class="sig" id="sig"></div>
-    <button class="tbtn" id="theme" type="button">Appearance</button>
+<nav class="nav">
+  <div class="brand"><b>AIRA</b><span>incident response</span></div>
+  <div class="tabs">
+    <a class="tab on" href="/">Console</a>
+    <a class="tab" href="/metrics">Metrics</a>
+    <a class="tab" href="/traces">Traces</a>
   </div>
-</header>
+  <div class="nav-right">
+    <div class="health" id="health"></div>
+    <span class="dim" id="tick">connecting…</span>
+    <button class="icon-btn" id="theme" type="button">Theme</button>
+  </div>
+</nav>
 
 <main>
   <aside>
@@ -218,10 +328,6 @@
   <div class="side"><div class="side-in" id="side"></div></div>
 </main>
 
-<footer>
-  <span id="tick">connecting…</span>
-  <span style="margin-left:auto">mid-semester preview</span>
-</footer>
 
 <script>
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
@@ -235,24 +341,47 @@ const A = {
   metrics: { name:"Metrics",      from:"13 measurements, each against its own baseline" },
   log:     { name:"Log",          from:"log lines from OpenSearch and container output" },
   change:  { name:"Change",       from:"feature flags, restarts, versions, dependencies" },
+  rca:     { name:"Root cause",   from:"every investigator's findings, combined" },
+  critic:  { name:"Critic",       from:"the proposed cause, checked against the evidence" },
+  postmortem: { name:"Postmortem", from:"the whole incident record, once the response settled" },
 };
-const ORDER = ["triage", "plan", "metrics", "log", "change"];
+const INVESTIGATORS = ["metrics", "log", "change"];
+const ORDER = ["triage", "plan", "metrics", "log", "change", "rca", "critic"];
+/* The postmortem is written after the response settles, which can be minutes after the last
+   round ends, so it is not part of a round - it belongs to the incident. */
+const AFTER_ROUNDS = ["postmortem"];
 
 let selected = null, items = [], first = true;
-const open = new Set();
+/* The trace carries every prompt and response, so it is fetched when asked for rather than with
+   the three-second poll. Cached per incident; cleared when the incident's event count moves. */
+let traceOpen = false, trace = null, traceFor = null, traceLoading = false;
+/* The report is a separate fetch, like the trace: it is a whole document and most of the time
+   nobody is looking at it. Cached per incident and cleared when the selection changes. */
+let pmOpen = false, pm = null, pmFor = null, pmLoading = false;
+/* The console repaints every three seconds, so anything the reader has opened or closed has to
+   survive that. Two sets rather than one, because the evidence blocks default to closed and the
+   round groups default to open - a single set cannot express both. */
+const open = new Set();   // default-closed things the reader opened
+const shut = new Set();   // default-open things the reader closed
 document.addEventListener("toggle", e => {
-  const k = e.target instanceof HTMLDetailsElement && e.target.dataset.k;
-  if (k) e.target.open ? open.add(k) : open.delete(k);
+  const el = e.target;
+  if (!(el instanceof HTMLDetailsElement) || !el.dataset.k) return;
+  const k = el.dataset.k;
+  if (el.dataset.defaultOpen) el.open ? shut.delete(k) : shut.add(k);
+  else el.open ? open.add(k) : open.delete(k);
 }, true);
+let healthOpen = false;
 
+/* Dark graphite is the primary theme, so the attribute is absent until the reader chooses
+   otherwise. The console was the one page that never restored that choice, which made the theme
+   appear to reset on navigation. */
 const root = document.documentElement;
+try { const t = localStorage.getItem("aira-theme"); if (t) root.setAttribute("data-theme", t); } catch {}
 document.getElementById("theme").onclick = () => {
-  const cur = root.getAttribute("data-theme");
-  const next = cur === "dark" ? "light" : cur === "light" ? "" : "dark";
-  next ? root.setAttribute("data-theme", next) : root.removeAttribute("data-theme");
+  const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  root.setAttribute("data-theme", next);
   try { localStorage.setItem("aira-theme", next); } catch {}
 };
-try { const t = localStorage.getItem("aira-theme"); if (t) root.setAttribute("data-theme", t); } catch {}
 
 const clock = iso => iso ? new Date(iso).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) : "—";
 function since(a, b) {
@@ -261,24 +390,126 @@ function since(a, b) {
   return s < 60 ? s + "s" : s < 3600 ? Math.floor(s/60) + "m" : Math.floor(s/3600) + "h " + Math.floor(s%3600/60) + "m";
 }
 
-function stages(inc) {
-  const found = (inc.agents && inc.agents.agents) || [];
-  const by = Object.fromEntries(found.map(a => [a.agent, a]));
-  const inv = found.filter(a => a.agent !== "triage");
-  const out = [];
-  for (const k of ORDER) {
-    if (k === "plan") {
-      if (!inv.length) continue;
-      out.push({ k, plan:true, status:"done",
-        ran: inv.filter(a => a.status !== "skipped").map(a => A[a.agent]?.name || a.agent),
-        skipped: inv.filter(a => a.status === "skipped") });
-    } else if (by[k]) out.push({ k, ...by[k] });
+/* The investigation, grouped by round.
+ *
+ * A rejected analysis sends the investigators back out, so the same agent can report twice. The
+ * round is therefore the top-level structure here rather than a tag on a card: "what did round 2
+ * change" is the question a reader of a re-planned investigation actually has, and a flat list of
+ * agent names cannot answer it. How many rounds there were is read off the data - there is no
+ * fixed number of rounds in this interface, and the orchestrator can run as many as its own
+ * limit allows. Rows carry no round at all on incidents recorded before replanning existed,
+ * which read as round 1.
+ */
+function groups(inc) {
+  const found = ((inc.agents && inc.agents.agents) || []).filter(a => a.agent !== "conclusion");
+  const rnd = a => a.round || 1;
+  const nums = [...new Set(found.map(rnd))].sort((x, y) => x - y);
+  const rounds = [];
+
+  for (const r of nums) {
+    const here = found.filter(a => rnd(a) === r);
+    const by = Object.fromEntries(here.map(a => [a.agent, a]));
+    const inv = here.filter(a => INVESTIGATORS.includes(a.agent));
+    const items = [];
+    for (const k of ORDER) {
+      if (k === "plan") {
+        // The plan is a round-1 decision: later rounds inherit it rather than re-deciding.
+        if (r > 1 || !inv.length) continue;
+        items.push({ k, plan: true, status: "done",
+          ran: inv.filter(a => a.status !== "skipped").map(a => A[a.agent]?.name || a.agent),
+          skipped: inv.filter(a => a.status === "skipped") });
+      } else if (by[k]) items.push({ k, round: r, ...by[k] });
+    }
+    rounds.push({
+      round: r,
+      items,
+      // "reask" is what sent the investigators out again: the verdict the Critic reached in the
+      // round before this one. The first round was never re-asked, so it has none.
+      reask: r > 1,
+      ran: here.filter(a => a.status === "done").length,
+      skipped: here.filter(a => a.status === "skipped").length,
+      failed: here.filter(a => a.status === "error").length,
+      runtime: here.reduce((n, a) => n + (a.runtime_s || 0), 0),
+      verdict: by.critic && by.critic.output ? by.critic.output.verdict : null,
+    });
   }
-  return out;
+
+  const conclusion = ((inc.agents && inc.agents.agents) || [])
+    .find(a => a.agent === "conclusion") || null;
+  return { rounds, conclusion };
+}
+
+/* One line per round header saying why that round exists and how it ended. Every word of it comes
+   from the round's own record, so a round with no Critic verdict says so rather than guessing. */
+function roundWhy(g, total) {
+  if (g.verdict === "insufficient") {
+    return g.round < total
+      ? "The Critic rejected this analysis, so the investigation was re-planned and run again"
+      : "The Critic still was not satisfied when the investigation stopped";
+  }
+  if (g.verdict === "accept") return "The Critic accepted the conclusion reached here";
+  if (g.reask) return "Re-run after the previous round was rejected";
+  return "No review was recorded for this round";
+}
+
+function roundHtml(inc, g, total) {
+  const k = `r-${inc.id}-${g.round}`;
+  const bits = [`${g.ran} ran`];
+  if (g.skipped) bits.push(`${g.skipped} skipped`);
+  if (g.failed) bits.push(`${g.failed} failed`);
+  if (g.runtime) bits.push(`${g.runtime.toFixed(1)}s`);
+  const tone = g.verdict === "insufficient" ? " again"
+             : g.verdict === "accept" ? " settled" : "";
+  return `<details class="round${tone}" data-k="${esc(k)}" data-default-open="1"${
+      shut.has(k) ? "" : " open"}>
+    <summary>
+      <svg class="round-chev" viewBox="0 0 10 10" aria-hidden="true">
+        <path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"
+              stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="round-n">Round ${g.round}${total > 1
+        ? `<i>${esc(String(g.round))} of ${esc(String(total))}</i>` : ""}</span>
+      <span class="round-why">${esc(roundWhy(g, total))}</span>
+      <span class="round-meta">${esc(bits.join(" \u00b7 "))}</span>
+    </summary>
+    <div class="round-b"><div class="tl">${
+      g.items.map(st => stageHtml(inc, st)).join("")}</div></div>
+  </details>`;
+}
+
+/* The RCA's hypotheses, in the order it ranked them: the first is its answer, the rest are what it
+   considered and did not pick. Showing the also-rans is the point - a single confident line would
+   hide that this ran on thin evidence. */
+function rcaHtml(o) {
+  const hs = o.hypotheses || [];
+  if (!hs.length) return o.summary ? `<ul class="says"><li>${esc(o.summary)}</li></ul>` : "";
+  return `<ul class="says"><li><b>${esc(o.summary || hs[0].statement)}</b>
+      <span class="q">overall confidence ${esc(o.confidence || "unstated")}</span></li></ul>
+    <ol class="hyp">` + hs.map((h, i) => `<li class="${i === 0 ? "top" : ""}">
+        <span class="hs">${esc(h.statement)}</span>
+        <span class="hm">${esc(h.confidence || "")}${h.from_agents?.length
+          ? " · from " + esc(h.from_agents.map(a => A[a]?.name || a).join(", ")) : ""}${
+          h.actionable === false ? " · not actionable" : ""}</span>
+        ${(h.supporting_evidence || []).map(e =>
+          `<span class="q mono">${esc(String(e).slice(0, 190))}</span>`).join("")}
+      </li>`).join("") + `</ol>`;
+}
+
+/* The Critic, which has to look different when it rejects - a verdict rendered like every other
+   finding is a verdict nobody notices. */
+function criticHtml(o) {
+  const bad = o.verdict === "insufficient";
+  const gaps = (o.gaps || []).map(g =>
+    `<li class="note">Asked <b>${esc(A[g.agent]?.name || g.agent)}</b> for ${esc(g.missing)}</li>`).join("");
+  const alt = o.alternative_overlooked
+    ? `<li class="note">Also considered: ${esc(o.alternative_overlooked)}</li>` : "";
+  return `<div class="cv ${bad ? "bad" : "good"}">${bad ? "Not yet established" : "Accepted"}</div>
+    <ul class="says"><li>${esc(o.reasoning || "")}</li>${gaps}${alt}</ul>`;
 }
 
 function says(st) {
   const o = st.output || {};
+  if (st.k === "rca") return rcaHtml(o);
+  if (st.k === "critic") return criticHtml(o);
   if (o.summary) {
     const cat = o.likely_cause_category
       ? `<li class="note">Classified as <b>${esc(o.likely_cause_category)}</b>, confidence ${esc(o.confidence)}</li>` : "";
@@ -297,12 +528,23 @@ function says(st) {
 
 function stageHtml(inc, st) {
   const m = A[st.k] || { name: st.k, from: "" };
+  // The agent's own colour, set once here and used by its dot and its name.
+  const c = ` style="--c: var(--ag-${esc(st.k)}, var(--accent))"`;
+
+  if (st.k === "conclusion") {
+    const o = st.output || {};
+    return `<section class="ev end ${esc(o.outcome || "")}">
+      <div class="ev-h"><span class="ev-n">Outcome</span>
+        <span class="ev-t">${o.rounds_run > 1 ? o.rounds_run + " rounds" : "1 round"}</span></div>
+      <ul class="says"><li>${esc(o.statement || "")}</li></ul>
+    </section>`;
+  }
 
   if (st.plan) {
     const skips = st.skipped.length
       ? st.skipped.map(s => `<li class="note">Did not run <b>${esc(A[s.agent]?.name || s.agent)}</b> — ${esc(s.skip_reason || "no reason recorded")}</li>`).join("")
       : `<li>Every source was needed for this kind of alert</li>`;
-    return `<section class="ev done">
+    return `<section class="ev done" data-ag="${esc(st.k)}"${c}>
       <div class="ev-h"><span class="ev-n">${m.name}</span><span class="ev-t">decided by rules</span></div>
       <div class="ev-from">${esc(m.from)}</div>
       <ul class="says"><li>Chose <b>${esc(st.ran.join(", ") || "nothing")}</b></li>${skips}</ul>
@@ -310,14 +552,14 @@ function stageHtml(inc, st) {
   }
 
   if (st.status === "skipped") {
-    return `<section class="ev skipped">
+    return `<section class="ev skipped" data-ag="${esc(st.k)}">
       <div class="ev-h"><span class="ev-n">${m.name}</span><span class="ev-t">not run</span></div>
       <div class="skipwhy">${esc(st.skip_reason || "no reason recorded")}</div>
     </section>`;
   }
 
   if (st.status === "error") {
-    return `<section class="ev error">
+    return `<section class="ev error" data-ag="${esc(st.k)}">
       <div class="ev-h"><span class="ev-n">${m.name}</span>
         <span class="ev-t">${st.runtime_s ? st.runtime_s.toFixed(1) + "s" : ""}</span></div>
       <div class="failwhy">${esc(st.error || "unknown error")}</div>
@@ -325,18 +567,18 @@ function stageHtml(inc, st) {
   }
 
   if (st.status === "running" || st.status === "pending") {
-    return `<section class="ev ${st.status}">
+    return `<section class="ev ${st.status}" data-ag="${esc(st.k)}">
       <div class="ev-h"><span class="ev-n">${m.name}</span>
         <span class="ev-t">${st.status === "running" ? "reading the evidence…" : "waiting"}</span></div>
       <div class="ev-from">${esc(m.from)}</div>
     </section>`;
   }
 
-  const k = `e-${inc.id}-${st.k}`;
+  const k = `e-${inc.id}-${st.k}-${st.round || 1}`;   // per round: two cards, two toggles
   const peek = st.evidence_preview
     ? `<details class="peek" data-k="${esc(k)}"${open.has(k) ? " open" : ""}>
          <summary>evidence it was given</summary><pre class="mono">${esc(st.evidence_preview)}</pre></details>` : "";
-  return `<section class="ev done">
+  return `<section class="ev done" data-ag="${esc(st.k)}"${c}>
     <div class="ev-h"><span class="ev-n">${m.name}</span>
       <span class="ev-t">${st.runtime_s ? st.runtime_s.toFixed(1) + "s" : ""}${st.attempts > 1 ? ` · ${st.attempts} tries` : ""}</span></div>
     <div class="ev-from">${esc(m.from)}</div>
@@ -344,9 +586,487 @@ function stageHtml(inc, st) {
   </section>`;
 }
 
+/* What each kind of event means, in the fewest words that are still true. The trace is for
+   someone asking "how was this concluded", so a row has to be readable without the raw JSON. */
+const EV = {
+  investigation_started:    ["Investigation started", "flow"],
+  plan_decided:             ["Plan decided", "flow"],
+  agent_started:            ["Agent started", "agent"],
+  agent_completed:          ["Agent finished", "agent"],
+  agent_error:              ["Agent failed", "bad"],
+  agent_call_started:       ["Agent called", "agent"],
+  agent_call_completed:     ["Agent returned", "agent"],
+  agent_call_failed:        ["Agent call failed", "bad"],
+  model_call_started:       ["Model asked", "model"],
+  model_call_completed:     ["Model answered", "model"],
+  model_call_failed:        ["Model call failed", "bad"],
+  tool_call_started:        ["Tool called over MCP", "tool"],
+  tool_call_completed:      ["Tool returned", "tool"],
+  tool_call_failed:         ["Tool call failed", "bad"],
+  tool_return_rejected:     ["Tool return refused by a guardrail", "bad"],
+  output_validation_failed: ["Output failed validation", "bad"],
+  retry_started:            ["Retrying with the error", "warn"],
+  retry_succeeded:          ["Retry accepted", "agent"],
+  retry_failed:             ["Retry also failed", "bad"],
+  investigation_finished:   ["Investigation finished", "flow"],
+  action_proposed:          ["Action proposed, awaiting approval", "warn"],
+  action_approved:          ["Action approved by a human", "flow"],
+  action_executed:          ["Action carried out", "agent"],
+  action_failed:            ["Action failed", "bad"],
+  action_rejected:          ["Action rejected by a human", "bad"],
+  action_refused:           ["Action refused by the safety layer", "bad"],
+  verification_started:     ["Checking whether it worked", "flow"],
+  verification_recovered:   ["Recovered", "agent"],
+  verification_not_recovered: ["Did not recover", "bad"],
+  remediation_exhausted:    ["Stopped after two attempts", "bad"],
+  memory_recalled:          ["Recalled similar past incidents", "agent"],
+  memory_unavailable:       ["Memory unavailable, continuing without it", "warn"],
+  memory_stored:            ["Stored in incident memory", "flow"],
+  memory_not_stored:        ["Not stored: no root cause reached", "warn"],
+  memory_store_failed:      ["Could not store in memory", "bad"],
+  memory_discarded:         ["Discarded the recalled cases and re-asked without them", "warn"],
+  postmortem_written:       ["Post-incident report written", "flow"],
+  postmortem_failed:        ["Could not write the report", "bad"],
+};
+
+const evClock = iso => iso ? new Date(iso).toLocaleTimeString([], { hour12: false }) : "";
+
+function evLine(e) {
+  const [label, cls] = EV[e.kind] || [e.kind, ""];
+  const d = e.detail || {};
+  // One line of the most useful thing this kind of event carries.
+  const bits = [];
+  if (d.tool) bits.push(d.tool);
+  if (d.via) bits.push("via " + d.via);
+  if (d.model) bits.push(d.model);
+  if (d.role) bits.push(d.role);
+  if (d.run) bits.push("chose " + d.run.join(", "));
+  if (d.schema) bits.push(d.schema);
+  if (d.tokens && d.tokens.total_tokens) bits.push(d.tokens.total_tokens + " tokens");
+  if (d.rounds) bits.push(d.rounds + (d.rounds > 1 ? " rounds" : " round"));
+  if (d.guardrail) bits.push(d.guardrail);
+  if (d.matched != null) bits.push(d.matched ? `${d.matched} similar case${d.matched > 1 ? "s" : ""}` : "nothing similar");
+  if (d.cases && d.cases.length) bits.push(d.cases.map(c => `#${c.incident_id} (${c.score})`).join(", "));
+  const text = d.prompt || d.response || d.output || d.error || d.rejected_output || "";
+  const body = text
+    ? `<pre class="ev-body mono">${esc(String(text).slice(0, 1400))}</pre>` : "";
+  return `<li class="tr ${cls}">
+    <span class="tr-t mono">${evClock(e.at)}</span>
+    <span class="tr-a">${esc(e.agent || "")}${e.round > 1 ? ` <i>r${e.round}</i>` : ""}</span>
+    <span class="tr-k">${esc(label)}</span>
+    <span class="tr-m">${esc(bits.join(" · "))}</span>
+    <span class="tr-d mono">${e.duration_ms ? Math.round(e.duration_ms) + " ms" : ""}</span>
+    ${body}</li>`;
+}
+
+/* A link straight to the distributed trace in Jaeger. Shown only when the investigation actually
+   recorded one, so a link is never offered that leads nowhere. */
+function jaegerLink(inc) {
+  if (!inc.trace_id) return "";
+  return `<a class="tracelink" target="_blank" rel="noopener"
+    href="http://localhost:8080/jaeger/ui/trace/${esc(inc.trace_id)}"
+    title="Every agent, tool call and model call for this incident, across all three processes"
+    >Open the full trace in Jaeger</a>`;
+}
+
+function traceHtml(inc) {
+  const n = inc.event_count || 0;
+  if (!n && !inc.trace_id) return "";
+  if (!traceOpen) {
+    return `<div class="tracebar"><button id="traceBtn" class="tracebtn">
+      Show the execution trace <b>${n}</b> recorded steps</button>${jaegerLink(inc)}</div>`;
+  }
+  const body = traceLoading || traceFor !== inc.id
+    ? `<p class="plain">Loading the trace…</p>`
+    : `<ul class="trace">${(trace || []).map(evLine).join("")}</ul>`;
+  return `<div class="tracebar"><button id="traceBtn" class="tracebtn on">
+      Hide the execution trace <b>${n}</b> recorded steps</button>${jaegerLink(inc)}</div>${body}`;
+}
+
+/* The post-incident report.
+ *
+ * Rendered from the Markdown the backend produces rather than rebuilt from the JSON, so the page
+ * and the downloaded file are the same document - a report that reads differently depending on
+ * where you opened it is not a record of anything.
+ *
+ * This is a deliberately small Markdown subset: headings, tables, lists, bold, code, quotes and
+ * rules, which is everything postmortem.py emits and nothing else. A full parser would be a
+ * dependency and a licence; this is forty lines and cannot render anything the backend does not
+ * produce.
+ */
+function mdToHtml(src) {
+  const lines = String(src || "").split("\n");
+  const out = [];
+  let inList = false, inTable = false;
+
+  const inline = t => esc(t)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|\s)_([^_]+)_(?=\s|$)/g, "$1<em>$2</em>");
+
+  const closeList = () => { if (inList) { out.push("</ul>"); inList = false; } };
+  const closeTable = () => { if (inTable) { out.push("</tbody></table>"); inTable = false; } };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const t = line.trim();
+
+    if (!t) { closeList(); closeTable(); continue; }
+
+    // A table: header row, separator row, then body rows until the block ends.
+    if (t.startsWith("|") && (lines[i + 1] || "").trim().startsWith("| ---")) {
+      closeList(); closeTable();
+      const cells = t.split("|").slice(1, -1).map(c => inline(c.trim()));
+      out.push(`<table><thead><tr>${cells.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>`);
+      inTable = true;
+      i++;                       // skip the separator
+      continue;
+    }
+    if (inTable && t.startsWith("|")) {
+      const cells = t.split("|").slice(1, -1).map(c => inline(c.trim()));
+      out.push(`<tr>${cells.map(c => `<td>${c}</td>`).join("")}</tr>`);
+      continue;
+    }
+    closeTable();
+
+    if (t.startsWith("### ")) { closeList(); out.push(`<h3>${inline(t.slice(4))}</h3>`); continue; }
+    if (t.startsWith("## "))  { closeList(); out.push(`<h2>${inline(t.slice(3))}</h2>`); continue; }
+    if (t.startsWith("# "))   { closeList(); out.push(`<h1>${inline(t.slice(2))}</h1>`); continue; }
+    if (t === "---")          { closeList(); out.push("<hr>"); continue; }
+    if (t.startsWith("> "))   { closeList(); out.push(`<blockquote><p>${inline(t.slice(2))}</p></blockquote>`); continue; }
+    if (t.startsWith("- "))   {
+      if (!inList) { out.push("<ul>"); inList = true; }
+      out.push(`<li>${inline(t.slice(2))}</li>`);
+      continue;
+    }
+    closeList();
+    out.push(`<p>${inline(t)}</p>`);
+  }
+  closeList(); closeTable();
+  return out.join("");
+}
+
+function postmortemHtml(inc) {
+  const row = ((inc.agents && inc.agents.agents) || [])
+    .find(a => a.agent === "postmortem");
+  // Nothing to show until the response has settled: while an action is awaiting a decision the
+  // incident is not over, and a report that stops at "awaiting approval" says nothing.
+  if (!row) return "";
+
+  if (row.status === "error") {
+    return `<div class="sec"><h2 class="sh">Post-incident report</h2>
+      <div class="pm"><div class="pm-pending">The report could not be written —
+        ${esc(row.error || "no reason recorded")}</div></div></div>`;
+  }
+  if (row.status !== "done") {
+    return `<div class="sec"><h2 class="sh">Post-incident report</h2>
+      <div class="pm"><div class="pm-pending">Writing the report…</div></div></div>`;
+  }
+
+  const title = (row.output && row.output.title) || "Post-incident report";
+  const body = (pmFor === inc.id && pm)
+    ? `<div class="pm-body">${mdToHtml(pm.markdown)}</div>`
+    : pmLoading
+      ? `<div class="pm-pending">Loading the report…</div>`
+      : "";
+
+  return `<div class="sec"><h2 class="sh">Post-incident report</h2>
+    <div class="pm">
+      <div class="pm-h">
+        <h3>${esc(title)}</h3>
+        <span class="pm-when mono">${row.runtime_s ? row.runtime_s.toFixed(1) + "s to write" : ""}</span>
+        <span class="right">
+          <button class="btn" id="pmBtn" type="button">${pmOpen ? "Hide" : "Read"} the report</button>
+          <a class="btn primary" href="/incidents/${inc.id}/postmortem.md"
+             download>Download</a>
+        </span>
+      </div>
+      ${pmOpen ? body : ""}
+    </div></div>`;
+}
+
+/* Remediation. The approval control is the one place on this console that changes the running
+   system, so it is deliberately the most prominent thing on the page when it is waiting, and a
+   rejected or failed action is rendered as visibly as a successful one. */
+const RISK_LABEL = { low: "low risk", medium: "medium risk", high: "high risk" };
+
+const ACTION_TITLE = {
+  reset_feature_flag: "Reset a feature flag",
+  restart_container:  "Restart a container",
+  none:               "No safe action applies",
+};
+
+function verdictRow(a) {
+  const v = a.verification;
+  if (!v) return "";
+  const cls = v.outcome === "recovered" ? "good" : v.outcome === "not_recovered" ? "bad" : "warn";
+  const label = v.outcome === "recovered" ? "Recovered"
+              : v.outcome === "not_recovered" ? "Did not recover" : "Waiting to see";
+  return `<div class="act-verify ${cls}"><b>${label}</b> ${esc(v.detail || "")}</div>`;
+}
+
+function actionHtml(inc, a) {
+  const title = ACTION_TITLE[a.action] || a.action;
+  const what = a.action === "reset_feature_flag" && a.params
+    ? `Set <code>${esc(a.params.flag)}</code> to <code>off</code> on <b>${esc(a.target_service)}</b>`
+    : a.action === "restart_container"
+      ? `Restart the <b>${esc(a.target_service)}</b> container`
+      : "";
+  const risk = a.risk ? `<span class="act-risk ${esc(a.risk)}">${esc(RISK_LABEL[a.risk] || a.risk)}</span>` : "";
+
+  // Awaiting a decision: the only state with controls.
+  if (a.status === "proposed") {
+    return `<section class="act waiting" data-act="${a.id}">
+      <div class="act-h"><span class="act-n">${esc(title)}</span>${risk}
+        <span class="act-t">awaiting approval</span></div>
+      ${what ? `<div class="act-what">${what}</div>` : ""}
+      <div class="act-why">${esc(a.reasoning || "")}</div>
+      ${a.expected_effect ? `<div class="act-exp">Expected: ${esc(a.expected_effect)}</div>` : ""}
+      ${a.reversal ? `<div class="act-rev">Reversal: ${esc(a.reversal)}</div>` : ""}
+      <div class="act-controls">
+        <button class="btn approve" data-approve="${a.id}">Approve and run</button>
+        <button class="btn reject" data-reject="${a.id}">Reject</button>
+        <span class="act-note">Nothing runs until you choose.</span>
+      </div>
+    </section>`;
+  }
+
+  // An action that ran cleanly but did not fix the incident must not read as a success: the status
+  // is about whether the command worked, the verification is about whether it helped, and the
+  // second is the one a person actually cares about.
+  const didNotHelp = a.verification && a.verification.outcome === "not_recovered";
+  const stateCls = a.status === "executed"
+                     ? (!a.result_ok || didNotHelp ? "failed" : "done")
+                 : a.status === "rejected" ? "rejected"
+                 : a.status === "failed" ? "failed"
+                 : a.status === "refused" ? "refused"
+                 : a.status === "superseded" ? "declined" : "declined";
+  const stateLabel = { executed: !a.result_ok ? "executed, but not confirmed"
+                                 : didNotHelp ? "ran, but did not fix it" : "executed",
+                       rejected: "rejected by a human", failed: "failed",
+                       refused: "refused by the safety layer",
+                       superseded: "already done by another incident",
+                       declined: "nothing proposed", approved: "approved, running now" }[a.status]
+                     || a.status;
+  return `<section class="act ${stateCls}" data-act="${a.id}">
+    <div class="act-h"><span class="act-n">${esc(title)}</span>${risk}
+      <span class="act-t">${esc(stateLabel)}</span></div>
+    ${what ? `<div class="act-what">${what}</div>` : ""}
+    <div class="act-why">${esc(a.reasoning || "")}</div>
+    ${a.decided_by ? `<div class="act-rev">${a.status === "rejected" ? "Rejected" : "Approved"} by
+       <b>${esc(a.decided_by)}</b> at ${clock(a.decided_at)}${a.decision_note
+         ? ` — ${esc(a.decision_note)}` : ""}</div>` : ""}
+    ${a.result_detail ? `<div class="act-res">${esc(a.result_detail)}</div>` : ""}
+    ${a.verified_by ? `<div class="act-ver">Confirmed at the source: ${esc(a.verified_by)}</div>` : ""}
+    ${a.reversal ? `<div class="act-rev">Reversal: ${esc(a.reversal)}</div>` : ""}
+    ${verdictRow(a)}
+  </section>`;
+}
+
+function remediationHtml(inc) {
+  const acts = inc.actions || [];
+  if (!acts.length) return "";
+  return `<h2 class="sh ract">What AIRA proposes to do</h2>
+    ${acts.map(a => actionHtml(inc, a)).join("")}`;
+}
+
+/* The pipeline, left to right. Built from the same findings and actions the timeline below uses,
+   so it can never disagree with the detail - it is a summary of that data, not a second copy.
+   Every stage the pipeline can have is shown even when it did not run, because "the Log agent was
+   skipped" is itself a decision worth seeing. */
+const FLOW = [
+  { key: "triage",      label: "Triage"      },
+  { key: "metrics",     label: "Metrics"     },
+  { key: "log",         label: "Log"         },
+  { key: "change",      label: "Change"      },
+  { key: "rca",         label: "Root cause"  },
+  { key: "critic",      label: "Critic"      },
+  { key: "remediation", label: "Remediation" },
+  { key: "postmortem",  label: "Postmortem"  },
+];
+
+function flowHtml(inc) {
+  const found = (inc.agents && inc.agents.agents) || [];
+  const byAgent = {};
+  for (const a of found) {
+    // Latest round wins: a re-run investigator's second answer is the current one.
+    const prev = byAgent[a.agent];
+    if (!prev || (a.round || 1) >= (prev.round || 1)) byAgent[a.agent] = a;
+  }
+  const rounds = Math.max(1, ...found.map(a => a.round || 1));
+  const actions = inc.actions || [];
+  const last = actions[actions.length - 1];
+
+  const steps = FLOW.map(f => {
+    const a = byAgent[f.key];
+    let cls = "pending", note = "", time = "";
+
+    if (f.key === "remediation") {
+      // This stage is about what was *done*, which lives in the action record rather than the
+      // agent's finding - a proposal nobody approved is not a completed step.
+      if (!last) { cls = a ? "pending" : "pending"; note = "not reached"; }
+      else if (last.status === "proposed") { cls = "waiting"; note = "awaiting you"; }
+      else if (last.status === "executed") {
+        const v = last.verification || {};
+        cls = (!last.result_ok || v.outcome === "not_recovered") ? "failed" : "done";
+        note = v.outcome === "recovered" ? "recovered"
+             : v.outcome === "not_recovered" ? "did not fix it"
+             : v.outcome === "not_yet" ? "verifying" : "executed";
+      }
+      else if (last.status === "declined") { cls = "skipped"; note = "no safe action"; }
+      else if (last.status === "rejected") { cls = "skipped"; note = "you rejected it"; }
+      else if (last.status === "refused") { cls = "failed"; note = "refused"; }
+      else if (last.status === "superseded") { cls = "skipped"; note = "already done"; }
+      if (last && last.risk && cls !== "skipped") time = last.risk + " risk";
+    } else if (!a) {
+      note = "not reached";
+    } else if (a.status === "skipped") {
+      cls = "skipped"; note = a.skip_reason ? "skipped" : "skipped";
+    } else if (a.status === "running" || a.status === "pending") {
+      cls = "running"; note = a.status === "running" ? "working" : "queued";
+    } else if (a.status === "error") {
+      cls = "failed"; note = "failed";
+    } else {
+      cls = "done";
+      time = a.runtime_s ? a.runtime_s.toFixed(1) + "s" : "";
+      if ((a.round || 1) > 1) note = "round " + a.round;
+    }
+
+    const title = a && a.status === "skipped" && a.skip_reason ? a.skip_reason : "";
+    return `<div class="flow-step ${cls}" style="--c: var(--ag-${esc(f.key)}, var(--accent))"${
+        title ? ` title="${esc(title)}"` : ""}>
+      <b>${esc(f.label)}</b>
+      <span>${esc(time || "—")}</span>
+      <em>${esc(note)}</em>
+    </div>`;
+  }).join("");
+
+  const totals = found.filter(a => a.runtime_s).reduce((n, a) => n + a.runtime_s, 0);
+  return `<h2 class="sh">How it was investigated${
+      rounds > 1 ? ` · ${rounds} rounds` : ""}</h2>
+    <div class="flow">${steps}</div>
+    <div class="facts" style="padding:9px 0 0">
+      <span>${found.filter(a => a.status === "done").length} agents ran</span>
+      ${totals ? `<span><b>${totals.toFixed(1)}s</b> of model time</span>` : ""}
+      ${actions.length ? `<span>${actions.length} action${actions.length > 1 ? "s" : ""} recorded</span>` : ""}
+    </div>`;
+}
+
+/* ---- the numbers, and which way they moved ----
+ *
+ * Read straight off the evidence the agents were given, so the cards cannot disagree with the
+ * findings underneath them. A measurement with no recorded baseline shows the value alone: a
+ * fabricated comparison would be worse than none.
+ */
+const pct = v => v == null ? null : (v * 100).toFixed(v < 0.01 && v > 0 ? 2 : 1) + "%";
+const ms  = v => v == null ? null : (v >= 1000 ? (v / 1000).toFixed(1) + " s" : v.toFixed(1) + " ms");
+const mib = v => v == null ? null : (v / 1048576).toFixed(0) + " MiB";
+const rps = v => v == null ? null : v.toFixed(3) + "/s";
+const cpu = v => v == null ? null : v.toFixed(1) + "%";
+
+/* Direction and size of the move, with colour saying whether it is bad rather than which way it
+   went: a fall in request rate and a fall in error ratio point the same way and mean opposite
+   things. `worseUp` is null where neither direction is itself a problem. */
+function trend(now, base, worseUp, fmt) {
+  if (now == null || base == null || !isFinite(now) || !isFinite(base)) return "";
+  // The figure being compared against, named, so the reader is not asked to take the
+  // percentage on trust.
+  const was = fmt ? esc(fmt(base)) : String(base);
+  if (base === 0) {
+    return now === 0 ? `<b class="flat">unchanged</b>, baseline ${was}`
+                     : `<b class="${worseUp === true ? "up" : "flat"}">appeared</b>, baseline ${was}`;
+  }
+  const r = (now - base) / base;
+  if (Math.abs(r) < 0.02) return `<b class="flat">unchanged</b>, baseline ${was}`;
+  const cls = worseUp == null ? "flat" : (r > 0) === worseUp ? "up" : "down";
+  return `<b class="${cls}">${r > 0 ? "\u25b2" : "\u25bc"} ${
+    Math.abs(r * 100).toFixed(0)}%</b> from ${was}`;
+}
+
+const MCARDS = [
+  { k: "error_ratio",         label: "Error ratio",  fmt: pct, base: "error_ratio_baseline",         worseUp: true },
+  { k: "request_rate_rps",    label: "Requests",     fmt: rps, base: "request_rate_rps_baseline",    worseUp: null },
+  { k: "latency_p95_ms",      label: "p95 latency",  fmt: ms,  base: "latency_p95_ms_baseline",      worseUp: true },
+  { k: "cpu_percent_of_core", label: "CPU",          fmt: cpu, base: "cpu_percent_of_core_baseline", worseUp: true },
+  { k: "memory_bytes",        label: "Memory",       fmt: mib, base: null,                           worseUp: null },
+];
+
+function mcardsHtml(inc) {
+  const v = (inc.evidence && inc.evidence.values) || {};
+  const cards = MCARDS.map(c => {
+    const now = v[c.k];
+    if (now == null || !isFinite(now)) return "";
+    const hot = (c.k === "error_ratio" && now > 0.05) || (c.k === "cpu_percent_of_core" && now > 100);
+    // Memory has a limit rather than a baseline, which is a different claim and gets its own line.
+    const sub = c.k === "memory_bytes" && v.memory_limit_bytes
+      ? `of ${esc(mib(v.memory_limit_bytes))} limit`
+      : c.base ? trend(now, v[c.base], c.worseUp, c.fmt) : "";
+    return `<div class="mcard${hot ? " hot" : ""}">
+      <span class="mk">${esc(c.label)}</span>
+      <span class="mv">${esc(c.fmt(now))}</span>
+      ${sub ? `<div class="md">${sub}</div>` : ""}
+    </div>`;
+  }).filter(Boolean).join("");
+  if (!cards) return "";
+  const when = inc.evidence_collected_at
+    ? ` · collected ${clock(inc.evidence_collected_at)}` : "";
+  return `<div class="sec"><h2 class="sh">Measured at the time${esc(when)}</h2>
+    <div class="mcards">${cards}</div></div>`;
+}
+
+/* ---- the conclusion ----
+ *
+ * One function, used by nothing else, so there is a single answer on the page. The ranked
+ * hypothesis when the RCA agent reached one, with the reviewer's verdict attached; otherwise the
+ * cause an investigator flagged directly, which on incidents recorded before the RCA agent
+ * existed is the only conclusion there is.
+ */
+function conclusionOf(inc) {
+  const found = (inc.agents && inc.agents.agents) || [];
+  const latest = n => found.filter(a => a.agent === n)
+                           .sort((x, y) => (x.round || 1) - (y.round || 1)).pop();
+  const rca = latest("rca"), critic = latest("critic"), end = latest("conclusion");
+  const top = ((rca && rca.output && rca.output.hypotheses) || [])[0];
+  const reviewed = critic && critic.output ? critic.output.verdict : null;
+  const rounds = end && end.output ? end.output.rounds_run : null;
+
+  if (top) {
+    return {
+      state: reviewed === "accept" ? "accepted" : "unconfirmed",
+      text: top.statement,
+      by: reviewed === "accept"
+        ? "Combined by the Root cause agent from every finding, and accepted by the Critic"
+        : reviewed === "insufficient"
+          ? `The Critic was not satisfied after ${rounds > 1 ? rounds + " rounds" : "one round"} — treat this as unconfirmed`
+          : "Proposed by the Root cause agent; no review was recorded",
+    };
+  }
+  for (const a of found) {
+    const hit = ((a.output && a.output.findings) || []).find(f => f.likely_cause);
+    if (hit) return { state: "accepted", text: hit.statement,
+                      by: `Identified directly by the ${A[a.agent] ? A[a.agent].name : a.agent} agent` };
+  }
+  return found.length
+    ? { state: "none", by: "",
+        text: "No cause was established. The evidence describes the symptoms, but nothing was found that explains them." }
+    : null;
+}
+
+function concHtml(inc) {
+  const c = conclusionOf(inc);
+  if (!c) return "";
+  return `<div class="sec"><section class="conc ${esc(c.state)}">
+    <div class="conc-k">${c.state === "none" ? "No root cause" : "Root cause"}</div>
+    <p class="conc-t">${esc(c.text)}</p>
+    ${c.by ? `<div class="conc-by">${esc(c.by)}</div>` : ""}
+  </section></div>`;
+}
+
+/* The order here is the order the page is read in: what happened, what was measured, what the
+   conclusion was, how it was reached, and only then what should be done about it. */
 function detail(inc) {
   const ag = inc.agents || { agents: [], total_runtime_s: 0 };
-  const sg = stages(inc);
+  const { rounds, conclusion } = groups(inc);
   const done = inc.status === "resolved";
   const facts = [
     `<span>Detected <b>${clock(inc.starts_at)}</b></span>`,
@@ -355,88 +1075,88 @@ function detail(inc) {
          : `<span>Active <b>${since(inc.starts_at)}</b></span>`,
   ].filter(Boolean).join("");
 
-  return `<div class="page">
+  const timeline = rounds.length
+    ? `<div class="sec"><h2 class="sh">What each agent found${
+          rounds.length > 1 ? ` · ${rounds.length} rounds` : ""}</h2>
+       ${rounds.map(g => roundHtml(inc, g, rounds.length)).join("")}
+       ${conclusion ? `<div class="tl">${
+          stageHtml(inc, { k: "conclusion", ...conclusion })}</div>` : ""}</div>`
+    : `<p class="plain">No investigation was recorded for this incident.</p>`;
+
+  return `<div class="page-in">
     <div class="eyebrow">
       <span class="badge ${esc(inc.status)}">${done ? "Resolved" : "Firing"}</span>
       <span class="dim">${esc(inc.severity || "")} · incident ${inc.id}</span>
     </div>
-    <h1>${esc(inc.service || "unknown")} <span class="alert">${esc(inc.alertname)}</span></h1>
+    <h1 class="inc">${esc(inc.service || "unknown")} <span class="alert">${esc(inc.alertname)}</span></h1>
     ${inc.description || inc.summary ? `<p class="why">${esc(inc.description || inc.summary)}</p>` : ""}
     <div class="facts">${facts}</div>
-    ${sg.length ? `<div class="tl">${sg.map(s => stageHtml(inc, s)).join("")}</div>`
-      : `<p class="plain">No investigation was recorded for this incident.</p>`}
+    ${mcardsHtml(inc)}
+    ${concHtml(inc)}
+    <div class="sec">${flowHtml(inc)}</div>
+    ${timeline}
+    ${remediationHtml(inc)}
+    ${postmortemHtml(inc)}
+    ${traceHtml(inc)}
   </div>`;
 }
 
-/* ---- right rail: the conclusion first, then the measurements behind it ---- */
-const pct = v => v == null ? null : (v * 100).toFixed(v < 0.01 && v > 0 ? 2 : 1) + "%";
-const ms  = v => v == null ? null : (v >= 1000 ? (v / 1000).toFixed(1) + " s" : v.toFixed(1) + " ms");
-const mib = v => v == null ? null : (v / 1048576).toFixed(0) + " MiB";
-
-// `aside` is the complete right-hand text, so memory can say "of 140 MiB" while the rest say
-// "was 0.0%" - a baseline and a limit are different things and should not share a label.
-function sigRow(k, val, aside, hot) {
-  if (val == null) return "";
-  return `<div class="sig-row"><span class="sig-k">${esc(k)}</span>
-    <span class="sig-v${hot ? " hot" : ""} mono">${esc(val)}</span>
-    ${aside ? `<span class="sig-b mono">${esc(aside)}</span>` : ""}</div>`;
-}
-
+/* ---- right rail ----
+ *
+ * References rather than a second copy of the page: the operations the evidence singled out, where
+ * the alert came from, and the links out to the tools the numbers were read from. The conclusion
+ * and the measurements live in the main column, so nothing here can disagree with them.
+ */
 function sideHtml(inc) {
   if (!inc) return "";
-  const found = (inc.agents && inc.agents.agents) || [];
-  // The cause, wherever it was found - today only the Change agent can set likely_cause.
-  let cause = null, by = null;
-  for (const a of found) {
-    const hit = (a.output?.findings || []).find(f => f.likely_cause);
-    if (hit) { cause = hit; by = A[a.agent]?.name || a.agent; break; }
-  }
-
-  const v = (inc.evidence && inc.evidence.values) || {};
-  const ops = (inc.evidence && inc.evidence.failing_operations) || [];
-  const errHot = v.error_ratio != null && v.error_ratio > 0.05;
-  const cpuHot = v.cpu_percent_of_core != null && v.cpu_percent_of_core > 100;
-
-  const was = s => s == null ? null : "was " + s;
-  const signals = [
-    sigRow("Error ratio", pct(v.error_ratio), was(pct(v.error_ratio_baseline)), errHot),
-    sigRow("Requests", v.request_rate_rps != null ? v.request_rate_rps.toFixed(3) + "/s" : null,
-           was(v.request_rate_rps_baseline != null ? v.request_rate_rps_baseline.toFixed(3) + "/s" : null)),
-    sigRow("p95 latency", ms(v.latency_p95_ms), was(ms(v.latency_p95_ms_baseline))),
-    sigRow("CPU", v.cpu_percent_of_core != null ? v.cpu_percent_of_core.toFixed(1) + "%" : null,
-           was(v.cpu_percent_of_core_baseline != null ? v.cpu_percent_of_core_baseline.toFixed(1) + "%" : null), cpuHot),
-    sigRow("Memory", mib(v.memory_bytes),
-           v.memory_limit_bytes ? "of " + mib(v.memory_limit_bytes) : null),
-  ].join("");
+  const ev = inc.evidence || {};
+  const ops = ev.failing_operations || [];
 
   const opHtml = ops.length
-    ? `<div class="opbox"><div class="k">Worst failing operation</div>
-       <div class="v mono">${esc(ops[0].operation)} — ${pct(ops[0].error_ratio)}</div></div>` : "";
+    ? `<h2 class="sh">Failing operations</h2>` + ops.slice(0, 4).map(o =>
+        `<div class="opbox"><div class="k">${esc(o.operation)}</div>
+         <div class="v"><b>${esc(pct(o.error_ratio))}</b> of calls failing</div></div>`).join("")
+    : "";
 
-  const verdict = cause
-    ? `<div class="verdict found"><p>${esc(cause.statement)}
-         <span class="by">identified by the ${esc(by)} agent</span></p></div>`
-    : found.length
-      ? `<div class="verdict none"><p>No configuration change explained this incident. The evidence
-           describes the symptoms, but nothing was found that caused them.</p></div>`
-      : `<div class="verdict none"><p>Not investigated.</p></div>`;
+  // Only the labels Alertmanager actually sent, so this section shrinks on a sparse alert rather
+  // than showing empty rows.
+  const labels = Object.entries(inc.labels || {})
+    .filter(([k]) => !["alertname", "severity", "service"].includes(k));
+  const whereHtml = `<div class="rail-sec"><h2 class="sh">Where this came from</h2>
+    <dl class="rail-kv">
+      <dt>Alert</dt><dd>${esc(inc.alertname)}</dd>
+      ${inc.severity ? `<dt>Severity</dt><dd>${esc(inc.severity)}</dd>` : ""}
+      ${inc.service ? `<dt>Service</dt><dd>${esc(inc.service)}</dd>` : ""}
+      ${labels.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}
+      ${inc.fingerprint ? `<dt>Fingerprint</dt><dd>${esc(inc.fingerprint)}</dd>` : ""}
+      ${inc.agent_model ? `<dt>Model</dt><dd>${esc(inc.agent_model)}</dd>` : ""}
+    </dl></div>`;
 
-  return `<h2 class="sh">What AIRA concluded</h2>${verdict}
-    ${signals ? `<h2 class="sh">Measured at the time</h2>${signals}${opHtml}` : ""}
-    <div class="side-note"><b>Still to come</b>Nothing yet reads every finding together to rank a
-      single root cause, and AIRA takes no action on its own. Combining the findings, challenging
-      them, and controlled remediation are the next phases.</div>`;
+  const links = [
+    inc.trace_id ? `<a target="_blank" rel="noopener"
+        href="http://localhost:8080/jaeger/ui/trace/${esc(inc.trace_id)}">This investigation in Jaeger</a>` : "",
+    `<a href="/metrics">Live metrics for every service</a>`,
+    `<a href="/traces">All recent traces</a>`,
+  ].filter(Boolean).join("");
+
+  return `${opHtml}${whereHtml}
+    <div class="rail-sec"><h2 class="sh">Open elsewhere</h2>
+      <div class="rail-links">${links}</div></div>`;
 }
 
 function listHtml() {
   return items.map(i => {
     const bars = ((i.agents || {}).agents || []).map(a => `<i class="${esc(a.status)}"></i>`).join("");
+    // An incident holding a proposal nobody has decided on is the only one in this list that
+    // needs the reader, so it is the only one that says anything extra.
+    const waiting = (i.actions || []).some(a => a.status === "proposed");
     return `<div class="row${i.id === selected ? " on" : ""}" data-id="${i.id}">
       <div class="row-1"><span class="st ${esc(i.status)}"></span>
         <span class="row-svc">${esc(i.service || "unknown")}</span>
         <span class="row-ago mono">${i.status === "firing" ? since(i.starts_at) : clock(i.ends_at || i.updated_at)}</span></div>
       <div class="row-2">${esc(i.alertname)}</div>
       ${bars ? `<div class="bars">${bars}</div>` : ""}
+      ${waiting ? `<div class="row-wait">Waiting for your approval</div>` : ""}
     </div>`;
   }).join("");
 }
@@ -452,8 +1172,83 @@ function paint() {
          : "Nothing is firing. Inject a fault and an alert will appear here within about 90 seconds."}</span></div>`;
   document.getElementById("side").innerHTML = sideHtml(sel);
   document.querySelectorAll(".row").forEach(el =>
-    el.onclick = () => { selected = Number(el.dataset.id); paint(); });
+    el.onclick = () => {
+      if (Number(el.dataset.id) !== selected) {
+        traceOpen = false; trace = null; traceFor = null;
+        pmOpen = false; pm = null; pmFor = null;
+      }
+      selected = Number(el.dataset.id);
+      paint();
+    });
+  const tb = document.getElementById("traceBtn");
+  if (tb) tb.onclick = () => { traceOpen = !traceOpen; if (traceOpen) loadTrace(); else paint(); };
+  const pb = document.getElementById("pmBtn");
+  if (pb) pb.onclick = () => { pmOpen = !pmOpen; if (pmOpen) loadPostmortem(); else paint(); };
+  document.querySelectorAll("[data-approve]").forEach(b =>
+    b.onclick = () => decide(Number(b.dataset.approve), "approve", b));
+  document.querySelectorAll("[data-reject]").forEach(b =>
+    b.onclick = () => decide(Number(b.dataset.reject), "reject", b));
   a.scrollTop = as; d.scrollTop = ds;
+}
+
+/* The only call this console makes that changes the running system. Both buttons are disabled
+   the moment one is pressed: an approval that ran twice because of a double click would be a
+   second, unapproved action. */
+async function decide(actionId, what, button) {
+  const section = button.closest(".act");
+  section.querySelectorAll("button").forEach(b => { b.disabled = true; });
+  const note = section.querySelector(".act-note");
+  if (note) note.textContent = what === "approve" ? "running…" : "recording…";
+  try {
+    const r = await fetch(`/actions/${actionId}/${what}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ by: "human (console)" }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (note) note.textContent = "could not " + what + ": " + (body.detail || r.status);
+      section.querySelectorAll("button").forEach(b => { b.disabled = false; });
+      return;
+    }
+  } catch (e) {
+    if (note) note.textContent = "could not reach the backend";
+    section.querySelectorAll("button").forEach(b => { b.disabled = false; });
+    return;
+  }
+  await refresh();
+}
+
+async function loadPostmortem() {
+  const id = selected;
+  if (id == null) return;
+  pmLoading = true;
+  paint();
+  try {
+    pm = await (await fetch(`/incidents/${id}/postmortem`)).json();
+    pmFor = id;
+  } catch {
+    pm = null;
+    pmFor = null;
+  }
+  pmLoading = false;
+  paint();
+}
+
+async function loadTrace() {
+  const id = selected;
+  if (id == null) return;
+  traceLoading = true;
+  paint();
+  try {
+    trace = await (await fetch(`/incidents/${id}/events`)).json();
+    traceFor = id;
+  } catch {
+    trace = [];
+    traceFor = id;
+  }
+  traceLoading = false;
+  paint();
 }
 
 async function refresh() {
@@ -464,22 +1259,82 @@ async function refresh() {
       `<b>${items.length}</b> total · <b>${f}</b> firing`;
     if (first && items.length) { selected = items[0].id; first = false; }
     if (selected && !items.some(i => i.id === selected)) selected = items.length ? items[0].id : null;
+    // An open trace on a live incident keeps up: if more steps have been recorded, fetch them.
+    const sel = items.find(i => i.id === selected);
+    if (traceOpen && sel && traceFor === sel.id && trace && !traceLoading
+        && (sel.event_count || 0) > trace.length) {
+      loadTrace();
+      return;
+    }
     paint();
     document.getElementById("tick").textContent = "updated " + new Date().toLocaleTimeString();
   } catch { document.getElementById("tick").textContent = "backend unreachable"; }
 }
 
+/* One summary in the top bar, with the per-dependency detail behind it. A row of badges spent
+   the same space every second of the day to say the same thing; this spends it only when
+   something is actually wrong, and still names what. Both come from /health. */
+function healthHtml(checks, mode) {
+  const rows = Object.entries(checks || {});
+  const bad = rows.filter(([, v]) => !v.ok);
+  // An archive deployment serves real recorded investigations but has no stack to watch. Saying
+  // so is the difference between an honest read-only console and one that looks broken.
+  if (mode === "archive") {
+    const n = rows.filter(([, v]) => v.archive).length;
+    return `<button class="health-sum" id="healthBtn" type="button"
+        aria-expanded="${healthOpen}" aria-controls="healthPop"><i></i><b>Archive</b></button>
+      <div class="health-pop" id="healthPop" role="group" aria-label="System health"${
+        healthOpen ? "" : " hidden"}>
+        <div class="health-row"><i></i><b>mode</b><span>archive &mdash; recorded incidents only</span></div>
+        ${rows.map(([k, v]) => `<div class="health-row ${v.ok ? "" : "bad"}">
+          <i></i><b>${esc(k)}</b><span>${esc(v.archive ? "not in this deployment" : (v.detail || ""))}</span></div>`
+        ).join("")}
+      </div>`;
+  }
+  const cls = !rows.length ? "bad" : !bad.length ? "" : bad.length >= rows.length ? "bad" : "warn";
+  const label = !rows.length ? "No health data"
+    : !bad.length ? `All ${rows.length} systems healthy`
+    : bad.length === 1 ? `${bad[0][0]} unreachable`
+    : `${bad.length} of ${rows.length} unreachable`;
+  return `<button class="health-sum ${cls}" id="healthBtn" type="button"
+      aria-expanded="${healthOpen}" aria-controls="healthPop"><i></i><b>${esc(label)}</b></button>
+    <div class="health-pop" id="healthPop" role="group" aria-label="System health"${
+      healthOpen ? "" : " hidden"}>
+      ${rows.map(([k, v]) => `<div class="health-row ${v.ok ? "" : "bad"}">
+        <i></i><b>${esc(k)}</b><span>${esc(v.detail || (v.ok ? "ok" : "unreachable"))}</span></div>`
+      ).join("") || `<div class="health-row bad"><i></i><b>backend</b><span>unreachable</span></div>`}
+    </div>`;
+}
+
+function paintHealth(checks, mode) {
+  const host = document.getElementById("health");
+  host.innerHTML = healthHtml(checks, mode);
+  document.getElementById("healthBtn").onclick = e => {
+    e.stopPropagation();
+    healthOpen = !healthOpen;
+    paintHealth(checks, mode);
+  };
+}
+
+let healthMode = "full";
+
 async function health() {
   try {
     const h = await (await fetch("/health")).json();
-    document.getElementById("sig").outerHTML =
-      `<div class="sig" id="sig">` + Object.entries(h.checks).map(([k, v]) =>
-        `<span class="sig${v.ok ? "" : " off"}" title="${esc(v.detail)}"><i></i>${esc(k)}</span>`
-      ).join(" ") + `</div>`;
+    healthMode = h.mode || "full";
+    paintHealth(h.checks, healthMode);
   } catch {
-    document.getElementById("sig").outerHTML = `<div class="sig off" id="sig"><i></i>offline</div>`;
+    paintHealth(null, healthMode);
   }
 }
+
+// A popover that outlives a click elsewhere, or the Escape key, is a popover in the way.
+document.addEventListener("click", e => {
+  if (healthOpen && !e.target.closest("#health")) { healthOpen = false; health(); }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && healthOpen) { healthOpen = false; health(); }
+});
 
 refresh(); health();
 setInterval(refresh, 3000);
