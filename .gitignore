@@ -14,7 +14,7 @@ __pycache__/
 
 # Runtime data
 backend/data/
-qdrant/
+/qdrant/
 *.log
 
 # OS / editor
