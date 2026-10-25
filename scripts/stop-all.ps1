@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Stops the AIRA backend, the OpenTelemetry Demo + Alertmanager containers, and Ollama.
+  Stops the AIRA backend, the MCP tools server, the RCA agent, the demo containers, and Ollama.
   Prometheus history (named volume) and the incident database are kept.
 #>
 . "$PSScriptRoot\common.ps1"
@@ -10,6 +10,18 @@ $procs = Get-BackendProcess
 if ($procs) {
     $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Ok "stopped backend (pid $($_.ProcessId))" }
 } else { Write-Info 'backend was not running' }
+
+Write-Step "MCP tools server (:8002)"
+$mcpProcs = Get-McpToolsProcess
+if ($mcpProcs) {
+    $mcpProcs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Ok "stopped MCP tools server (pid $($_.ProcessId))" }
+} else { Write-Info 'MCP tools server was not running' }
+
+Write-Step "RCA agent (A2A on :8001)"
+$rca = Get-RcaProcess
+if ($rca) {
+    $rca | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Ok "stopped RCA agent (pid $($_.ProcessId))" }
+} else { Write-Info 'RCA agent was not running' }
 
 Write-Step "Feature flags back to off (so the next start is clean)"
 if (Test-Http 'http://localhost:8080/feature/api/read') {

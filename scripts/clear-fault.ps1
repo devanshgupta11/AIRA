@@ -6,10 +6,17 @@
 #>
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('high-cpu', 'cart-failure', 'payment-failure', 'product-catalog-failure', 'memory-leak', 'homepage-flood', 'service-down')]
     [string]$Scenario
 )
 . "$PSScriptRoot\common.ps1"
+
+# Same list, same place: scenarios.json. A ValidateSet here would be a second copy to forget.
+$known = (Get-Content "$PSScriptRoot\scenarios.json" -Raw | ConvertFrom-Json).PSObject.Properties.Name
+if ($known -notcontains $Scenario) {
+    Write-Fail "unknown scenario '$Scenario'"
+    Write-Info ("defined in scenarios.json: " + ($known -join ', '))
+    exit 1
+}
 $sc = Get-Scenario $Scenario
 
 Write-Step "Clear '$Scenario'"

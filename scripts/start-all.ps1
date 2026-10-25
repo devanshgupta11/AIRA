@@ -16,7 +16,7 @@ if (-not (Test-DockerEngine)) {
 } else { Write-Ok 'Docker engine running' }
 
 Write-Step "OpenTelemetry Demo + Alertmanager (docker compose up -d)"
-Invoke-Compose up -d --remove-orphans | Select-String -Pattern 'Error|error' | ForEach-Object { Write-Warn2 $_ }
+Invoke-Compose up -d --remove-orphans -Tolerant | Select-String -Pattern 'Error|error' | ForEach-Object { Write-Warn2 $_ }
 $null = Wait-Until { Test-Http 'http://localhost:8080/' } 240 'Astronomy Shop responds on :8080'
 $null = Wait-Until { Test-Http 'http://localhost:9090/-/ready' } 120 'Prometheus ready on :9090'
 $null = Wait-Until { Test-Http 'http://localhost:9093/-/ready' } 120 'Alertmanager ready on :9093'
@@ -61,6 +61,45 @@ try {
     $ps = (Invoke-RestMethod 'http://localhost:11434/api/ps').models | Where-Object name -eq $OllamaModel
     if ($ps) { Write-Info ("loaded: {0:N1} GB, {1:N1} GB in GPU memory" -f ($ps.size / 1GB), ($ps.size_vram / 1GB)) }
 } catch { Write-Fail "model warm-up failed: $_"; $failed = $true }
+
+Write-Step "RCA agent over A2A (ADK on :8001)"
+if (-not (Get-RcaProcess)) {
+    Start-Process -FilePath $VenvPython -ArgumentList '-m', 'uvicorn', 'app.agents.rca_server:app', '--host', '127.0.0.1', '--port', '8001' `
+        -WorkingDirectory $BackendDir -WindowStyle Hidden `
+        -RedirectStandardOutput (Join-Path $LogDir 'rca.out.log') -RedirectStandardError (Join-Path $LogDir 'rca.err.log')
+} else { Write-Info 'RCA agent process already running' }
+if (Wait-Until { Test-Http 'http://127.0.0.1:8001/.well-known/agent-card.json' } 90 'RCA agent card served on :8001') {
+    $card = Invoke-RestMethod 'http://127.0.0.1:8001/.well-known/agent-card.json'
+    # The protocol version lives on each supported interface, not on the card itself.
+    $proto = ($card.supportedInterfaces | Select-Object -First 1).protocolVersion
+    Write-Ok "agent card: $($card.name), A2A protocol $proto, skills: $(($card.skills | ForEach-Object { $_.id }) -join ', ')"
+    # The first call into the ADK agent pays LiteLLM's one-off initialisation (~19s). Paying it here
+    # keeps it out of the first real incident's measured runtime. Run from the backend directory:
+    # the module is app.agents, importable only from there.
+    Push-Location $BackendDir
+    try {
+        $out = & $VenvPython -c "import asyncio; from app.agents import adk_base; print(round(asyncio.run(adk_base.warm()), 1))" 2>&1
+        $secs = ($out | Select-Object -Last 1) -as [double]
+        if ($null -ne $secs) { Write-Ok ("reasoning path warm: first ADK call took {0:N1}s" -f $secs) }
+        else { Write-Warn2 "could not warm the reasoning path: $($out | Select-Object -Last 1)" }
+    } finally { Pop-Location }
+} else { $failed = $true }
+
+Write-Step "Evidence tools over MCP (:8002)"
+if (-not (Get-McpToolsProcess)) {
+    Start-Process -FilePath $VenvPython -ArgumentList '-m', 'uvicorn', 'app.mcp_servers.tools_server:app', '--host', '127.0.0.1', '--port', '8002' `
+        -WorkingDirectory $BackendDir -WindowStyle Hidden `
+        -RedirectStandardOutput (Join-Path $LogDir 'mcp-tools.out.log') -RedirectStandardError (Join-Path $LogDir 'mcp-tools.err.log')
+} else { Write-Info 'MCP tools server already running' }
+# The port starts listening before the MCP session manager can complete a handshake, so waiting
+# for the port and then asking once reported "advertises no tools" on a cold start while the
+# backend, fifteen seconds later, listed all three. Wait for the protocol, not the socket.
+if (Wait-Until { Get-NetTCPConnection -LocalPort 8002 -State Listen -ErrorAction SilentlyContinue } 60 'MCP tools server listening on :8002') {
+    $tools = $null
+    if (Wait-Until { $script:tools = Test-McpTools; [bool]$script:tools } 60 'MCP tools answer the protocol' 3) {
+        Write-Ok "MCP tools advertised: $script:tools"
+    } else { Write-Fail 'MCP tools server is listening but never advertised its tools'; $failed = $true }
+} else { $failed = $true }
 
 Write-Step "AIRA backend (FastAPI on :8000)"
 if (-not (Get-BackendProcess)) {

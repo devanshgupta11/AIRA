@@ -2,16 +2,26 @@
 .SYNOPSIS
   Injects one real fault into the OpenTelemetry Demo and verifies it took effect.
 .PARAMETER Scenario
-  high-cpu | cart-failure | payment-failure | product-catalog-failure | memory-leak | homepage-flood | service-down
+  Any key defined in scenarios.json. Run with no argument to list them.
 .EXAMPLE
   .\inject-fault.ps1 -Scenario payment-failure
 #>
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('high-cpu', 'cart-failure', 'payment-failure', 'product-catalog-failure', 'memory-leak', 'homepage-flood', 'service-down')]
     [string]$Scenario
 )
 . "$PSScriptRoot\common.ps1"
+
+# Validated against scenarios.json rather than a ValidateSet baked into this file. The two had
+# already drifted: high-latency and memory-growth were defined in scenarios.json and the attribute
+# here still listed the original seven, so injecting either failed with a parameter error that
+# looked nothing like the real cause. One list, in one place.
+$known = (Get-Content "$PSScriptRoot\scenarios.json" -Raw | ConvertFrom-Json).PSObject.Properties.Name
+if ($known -notcontains $Scenario) {
+    Write-Fail "unknown scenario '$Scenario'"
+    Write-Info ("defined in scenarios.json: " + ($known -join ', '))
+    exit 1
+}
 $sc = Get-Scenario $Scenario
 
 Write-Step "Inject '$Scenario': $($sc.description)"

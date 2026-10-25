@@ -26,6 +26,7 @@ $checks = [ordered]@{
     'Alertmanager :9093'    = 'http://localhost:9093/-/ready'
     'Ollama :11434'         = 'http://localhost:11434/api/version'
     'AIRA backend :8000'    = 'http://localhost:8000/health'
+    'RCA agent A2A :8001'   = 'http://127.0.0.1:8001/.well-known/agent-card.json'
 }
 foreach ($c in $checks.GetEnumerator()) {
     if (Test-Http $c.Value) { Write-Ok $c.Key } else { Write-Fail "$($c.Key)  ($($c.Value))"; $problems++ }
@@ -37,6 +38,37 @@ if (Test-Http 'http://localhost:8000/health') {
         if ($k.Value.ok) { Write-Ok "backend -> $($k.Name): $($k.Value.detail)" } else { Write-Fail "backend -> $($k.Name): $($k.Value.detail)"; $problems++ }
     }
 }
+# Tracing: reported from the backend's own view of it, which probes the collector rather than
+# trusting what it found at startup. A degraded trace pipeline is not an outage - investigations
+# run identically without it - so this is informational, never a failure.
+if (Test-Http 'http://localhost:8000/health') {
+    $t = (Invoke-RestMethod 'http://localhost:8000/health').checks.tracing
+    if ($t) {
+        if ($t.detail -like '*exporting*') { Write-Ok "tracing -> $($t.detail) ($($t.url))" }
+        else { Write-Warn2 "tracing -> $($t.detail)" }
+    }
+}
+
+# The evidence tools are reached over MCP. Without this process the investigation falls back to
+# direct calls and says so on the incident, so this is a degraded state rather than a broken one -
+# reported as a warning, not a failure.
+$mcpTools = Test-McpTools
+if ($mcpTools) { Write-Ok "MCP tools server -> advertises: $mcpTools" }
+else { Write-Warn2 'MCP tools server not answering - investigations will fall back to direct tool calls and record that' }
+
+# Reported honestly: without this process the Orchestrator's RCA step fails, which the console
+# shows as an error on the incident rather than silently skipping the root-cause analysis.
+if (Test-Http 'http://127.0.0.1:8001/.well-known/agent-card.json') {
+    $card = Invoke-RestMethod 'http://127.0.0.1:8001/.well-known/agent-card.json'
+    # The protocol version lives on each supported interface, not on the card itself.
+    $proto = ($card.supportedInterfaces | Select-Object -First 1).protocolVersion
+    Write-Info ("RCA agent -> {0}, A2A protocol {1}, skills: {2}" -f $card.name, $proto,
+                (($card.skills | ForEach-Object { $_.id }) -join ', '))
+} else {
+    Write-Fail 'RCA agent not serving its card - the RCA step of every investigation will fail'
+    $problems++
+}
+
 if (Test-Http 'http://localhost:11434/api/version') {
     $m = (Invoke-RestMethod 'http://localhost:11434/api/ps').models
     if ($m) { $m | ForEach-Object { Write-Info ("model loaded: {0} ({1:N1} GB in GPU memory)" -f $_.name, ($_.size_vram / 1GB)) } }

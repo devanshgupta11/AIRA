@@ -25,6 +25,8 @@ $Urls = [ordered]@{
     'Prometheus'         = 'http://localhost:9090/'
     'Prometheus alerts'  = 'http://localhost:9090/alerts'
     'Alertmanager'       = 'http://localhost:9093/'
+    'RCA agent card'     = 'http://127.0.0.1:8001/.well-known/agent-card.json'
+    'MCP tools server'   = 'http://127.0.0.1:8002/mcp'
 }
 
 New-Item -ItemType Directory -Force $LogDir | Out-Null
@@ -39,14 +41,19 @@ function Write-Info($msg) { Write-Host "         $msg" }
 # Deliberately a simple function using $args: an advanced function (param + [Parameter]) would
 # swallow "-d" as its own -Debug common parameter and run compose attached.
 function Invoke-Compose {
-    $ComposeArgs = $args
+    $ComposeArgs = @($args | Where-Object { $_ -ne '-Tolerant' })
+    $tolerant = @($args) -contains '-Tolerant'
     Push-Location $DemoDir
     try {
         $base = @('compose', '--env-file', '.env', '--env-file', '.env.override', '--env-file', '..\infra\aira.env',
                   '-f', 'compose.yaml', '-f', 'compose.full.yaml', '-f', 'compose.observability.yaml',
                   '-f', 'compose.extras.yaml', '-f', '..\infra\compose.aira.yaml')
         & docker @base @ComposeArgs 2>&1 | ForEach-Object { "$_" }
-        if ($LASTEXITCODE -ne 0) { throw "docker compose $($ComposeArgs -join ' ') failed (exit $LASTEXITCODE)" }
+        if ($LASTEXITCODE -ne 0) {
+            $msg = "docker compose $($ComposeArgs -join ' ') exited $LASTEXITCODE"
+            if ($tolerant) { Write-Warn2 "$msg - continuing; the health checks below decide" }
+            else { throw "$msg" }
+        }
     } finally { Pop-Location }
 }
 
@@ -91,4 +98,28 @@ function Invoke-FlagCtl {
 function Get-BackendProcess {
     Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
         Where-Object { $_.CommandLine -like '*uvicorn*app.main:app*' }
+}
+
+# The RCA agent runs as its own process so the backend reaches it over A2A rather than by import -
+# a real protocol boundary, which is the point of exposing it that way.
+function Get-RcaProcess {
+    Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
+        Where-Object { $_.CommandLine -like '*uvicorn*app.agents.rca_server:app*' }
+}
+
+# Same reasoning for the evidence tools: they are served over MCP, so they are a service with a
+# declared interface rather than a Python import.
+function Get-McpToolsProcess {
+    Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
+        Where-Object { $_.CommandLine -like '*uvicorn*app.mcp_servers.tools_server:app*' }
+}
+
+# MCP has no plain GET health endpoint - the protocol needs an initialize handshake - so health is
+# asked through the client, which also proves the tools are actually advertised. The query lives in
+# scripts\mcp_tools_list.py rather than inline: PowerShell strips the quotes when passing code to
+# python -c on Windows, which made this helper fail with a SyntaxError on every call.
+function Test-McpTools {
+    $out = & $VenvPython (Join-Path $PSScriptRoot 'mcp_tools_list.py') 2>$null
+    if ($LASTEXITCODE -eq 0 -and "$out".Trim()) { return "$out".Trim() }
+    return $null
 }
