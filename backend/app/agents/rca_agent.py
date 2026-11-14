@@ -13,7 +13,7 @@ import logging
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from . import adk_base, base
 
@@ -34,6 +34,37 @@ class Hypothesis(BaseModel):
         min_length=1, description="which agents contributed that evidence")
     confidence: Literal["low", "medium", "high"]
     actionable: bool = Field(description="true if a concrete action could address this cause")
+
+    @field_validator("from_agents", mode="before")
+    @classmethod
+    def _canonical_agent_names(cls, v):
+        """Accept the names the prompt actually puts in front of the model, store the bare ones.
+
+        Measured over 31 recorded RCA failures: 13 were this field, and 12 of those were spelling
+        rather than invention. Eight were "<name> agent" - which is exactly how `findings_block`
+        labels each agent ("- change agent:"), so the model was copying the heading it had just
+        been shown and being refused for it. Four were a pipe list the model carried across whole
+        ("metrics | log | change") instead of choosing from it, the same mistake the schema hint's
+        angle brackets were introduced to stop.
+
+        Neither is a fabricated source, which is the only thing the consistency check exists to
+        catch - and it still catches them, because normalising a name cannot invent one that ran.
+        An agent that never investigated this incident is still refused: `postmortem`, the
+        remaining case, runs after the RCA and so can never be a source.
+        """
+        items = v if isinstance(v, list) else [v]
+        out: list[str] = []
+        for item in items:
+            # A pipe, slash or comma inside one entry is a list the model failed to split.
+            for part in re.split(r"[|/,]", str(item)):
+                name = part.strip().strip("\"'`").lower()
+                if name.endswith(" agent"):
+                    name = name[:-len(" agent")].strip()
+                if name and name not in out:
+                    out.append(name)
+        # An empty result means there was nothing name-like in there at all; hand the original
+        # back so the field's own constraint reports it rather than this silently emptying it.
+        return out or v
 
 
 class RCAResult(BaseModel):
@@ -97,7 +128,10 @@ RULES = f"""Rules, in priority order:
 6. A SERVICE CAN FAIL BECAUSE ANOTHER ONE DID. If the evidence says a change affects a service this
    one calls, the cause belongs to that upstream service; name it rather than blaming this one.
 
-7. "from_agents" must only contain names that actually appear in the findings above.
+7. "from_agents" must only contain names that actually appear in the findings above, written as
+   the bare name and one per entry. The findings are headed "metrics agent", "change agent" and so
+   on; drop the word "agent" and write ["change"], never ["change agent"] and never
+   ["metrics | change"].
 
 {base.NUMBER_RULES}
 - Set actionable true only when a concrete, reversible step could address the cause - for example

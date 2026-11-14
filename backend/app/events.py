@@ -42,6 +42,17 @@ _current: contextvars.ContextVar[tuple[int, str, int] | None] = contextvars.Cont
 # this table is written on the hot path of every model call.
 MAX_TEXT = 2000
 
+# The prompt is the one field worth keeping in full. The console shows each agent exactly what it
+# was asked, and at MAX_TEXT a prompt loses its evidence block, its rules and its schema hint -
+# precisely the parts that explain the answer. Responses stay at MAX_TEXT, because the finding
+# already records what the agent concluded.
+#
+# Measured on incident 332: the investigators sit at 5.1-6.2 kB and the Critic at 7.3 kB, but the
+# Remediation agent reached 8.8 kB - it carries the findings, the RCA, the Critic's verdict and the
+# action rules at once, and on a retry it also carries the current flag and container state. 12 kB
+# clears that with room, and a clipped prompt still says so rather than appearing complete.
+MAX_PROMPT = 12000
+
 
 @contextlib.contextmanager
 def investigating(incident_id: int, agent: str, round_: int = 1, phase: str = "agent"):
@@ -220,7 +231,7 @@ def wire_crewai() -> bool:
         record("crewai", "model_call_started",
                detail={"model": getattr(event, "model", None),
                        "temperature": getattr(event, "temperature", None),
-                       "prompt": clip(getattr(event, "messages", None))})
+                       "prompt": clip(getattr(event, "messages", None), MAX_PROMPT)})
 
     @crewai_event_bus.on(LLMCallCompletedEvent)
     def _llm_completed(_source, event):
@@ -273,7 +284,7 @@ def adk_callbacks() -> dict:
             started[id(ctx)] = time.perf_counter()
             record("adk", "model_call_started",
                    detail={"model": str(getattr(request, "model", None)),
-                           "prompt": clip("\n".join(parts))})
+                           "prompt": clip("\n".join(parts), MAX_PROMPT)})
         except Exception:  # noqa: BLE001
             log.debug("adk before_model callback failed", exc_info=True)
         return None

@@ -62,7 +62,7 @@ def collect(service: str | None, starts_at: str) -> dict:
 def _agent():
     return base.make_agent(
         role="Log Investigator",
-        goal="Determine what a service's own log lines reveal about an incident, or state clearly that none exist.",
+         goal="Determine what a service's own log lines reveal about an incident, or state clearly that none exist.",
         backstory=(
             "You are AIRA's log specialist. You read raw application logs and report only what they "
             "actually say. You never invent or paraphrase a log line, and you are comfortable "

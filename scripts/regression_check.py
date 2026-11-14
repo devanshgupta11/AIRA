@@ -840,6 +840,55 @@ def reasoning_checks() -> None:
                         gaps=[{"missing": "whether any flag affects the services it calls",
                                "agent": "change"}]))
 
+    # BUG: rule 2 says a cause read off the running configuration is sufficient, and the model
+    # ignored it - measured over 185 concluded incidents, 54% came back "insufficient" and 127
+    # ran a second round, against a prompt whose stated default is "accept". The rejections asked
+    # for "evidence that the flag actually caused the failures", which the old guard did not match
+    # because it looked for the words "only on symptoms". The condition is checked now, not the
+    # phrasing - and only when the analysis is actually built on the flagged finding.
+    flag_found = [{"agent": "change", "status": "done", "output": {"findings": [
+        {"statement": "paymentFailure feature flag is set to 100% on payment service.",
+         "likely_cause": True}]}}]
+
+    def c2(rca, **kw) -> bool:
+        try:
+            critic_agent._consistency_check(flag_found, rca)(CR(**kw))
+            return False
+        except ValueError:
+            return True
+
+    on_it = {"hypotheses": [{"statement": "The paymentFailure flag set to 100% on payment is "
+                                          "causing checkout failures.",
+                             "supporting_evidence": ["paymentFailure is 100%"]}]}
+    same_service = {"hypotheses": [{"statement": "The payment service is overloaded.",
+                                    "supporting_evidence": ["cpu is high"]}]}
+    unrelated = {"hypotheses": [{"statement": "Network latency between services is the cause.",
+                                 "supporting_evidence": ["latency rose"]}]}
+    how_gap = [{"missing": "evidence showing how the flag affected the error rate",
+                "agent": "metrics"}]
+
+    check("critic: a confirmed cause the analysis is built on cannot be called insufficient",
+          c2(on_it, verdict="insufficient",
+             reasoning="needs proof the flag actually caused the failures", gaps=how_gap))
+    check("critic: accepting that same analysis is allowed",
+          not c2(on_it, verdict="accept", reasoning="the change agent read the flag directly",
+                 gaps=[]))
+    check("critic: a flagged cause the analysis ignored can still be rejected",
+          not c2(unrelated, verdict="insufficient",
+                 reasoning="the analysis never addresses the flag that was found", gaps=how_gap))
+    # Naming the same service is not naming the same cause: matching on "payment" alone would
+    # have forced an acceptance here.
+    check("critic: naming the same service is not naming the same cause",
+          not c2(same_service, verdict="insufficient",
+                 reasoning="overload is asserted, not shown", gaps=how_gap))
+    # The first version compared with `in`, so "service" matched "services" in an unrelated
+    # hypothesis and settled it.
+    check("critic: a substring of an unrelated word does not settle an incident",
+          critic_agent._settles_it(flag_found, unrelated)[1] is False)
+    check("critic: the standing statement tells this incident what rule 2 means for it",
+          "Rule 2 applies and is not optional"
+          in critic_agent.evidence_standing(flag_found, on_it))
+
     # BUG: with nothing confirmed at the configuration level the RCA restated a log message as the
     # cause, at high confidence and with no alternative - certainty it had not earned.
     r_check = rca_agent._consistency_check([{"agent": "metrics", "status": "done", "output": {
@@ -867,6 +916,27 @@ def reasoning_checks() -> None:
     check("rca: an agent that never investigated cannot be cited",
           r_rejects(hypotheses=[one.model_copy(update={"confidence": "medium", "from_agents": ["network"]}), two],
                     summary="one of two things happened", confidence="medium"))
+
+    # BUG: 13 of 31 recorded RCA failures were this one field, and 12 of them were spelling, not
+    # invention. findings_block heads each agent "- change agent:", so the model wrote back the
+    # label it had been shown and was refused for it; others carried a pipe list across whole.
+    # The names are now normalised into the canonical form before anything judges them.
+    def _named(value):
+        return rca_agent.Hypothesis(statement="Something in the service broke",
+                                    supporting_evidence=["errors rose"], from_agents=value,
+                                    confidence="low", actionable=False).from_agents
+    check("rca: '<name> agent' is read as that agent, not as a stranger",
+          _named(["change agent"]) == ["change"] and _named(["Metrics Agent"]) == ["metrics"])
+    check("rca: a pipe list in one entry is split into the agents it names",
+          _named(["metrics | log | change"]) == ["metrics", "log", "change"])
+    check("rca: a repeated name is listed once",
+          _named(["metrics | metrics"]) == ["metrics"]
+          and _named(["change", "change agent"]) == ["change"])
+    check("rca: normalising a name still cannot invent one that ran",
+          _named(["postmortem"]) == ["postmortem"]
+          and r_rejects(hypotheses=[one.model_copy(update={"confidence": "medium",
+                                                           "from_agents": ["postmortem agent"]}), two],
+                        summary="one of two things happened", confidence="medium"))
 
     # BUG: over A2A the same answer arrives twice - once as a message event, again in the final
     # one - and _ask() concatenated every event, so every RCA reply came back doubled. parse()
@@ -1124,15 +1194,34 @@ def postmortem_checks() -> None:
 
     # Served to be read, and to be kept.
     for route in ("/incidents/{incident_id}/postmortem",
-                  "/incidents/{incident_id}/postmortem.md"):
+                  "/incidents/{incident_id}/postmortem.md",
+                  "/incidents/{incident_id}/postmortem.pdf"):
         check(f"the backend serves {route}", f'"{route}"' in main_src)
     check("the report downloads as a file rather than rendering in the tab",
           "Content-Disposition" in main_src and "attachment" in main_src)
+    # Markdown is what the report is assembled in and the console renders; the PDF is typeset from
+    # that same string. Keeping both means the saved file cannot drift from the page.
+    check("the PDF is typeset from the same markdown the console renders",
+          "postmortem_pdf.render(md" in main_src)
 
     console = (Path(db.__file__).parent / "static/index.html").read_text(encoding="utf-8")
     check("the console renders the report and offers the download",
           "postmortemHtml" in console and "mdToHtml" in console
-          and "postmortem.md" in console and "download" in console)
+          and "postmortem.pdf" in console and "download" in console)
+    # Observed 2026-10-27: paint() rebuilds the detail pane every three seconds and a new element
+    # starts at the top, so a reader scrolling the report or an expanded trace entry was thrown
+    # back up on every poll. Only the two outer panes were being restored.
+    check("scroll positions inside the detail pane survive a repaint",
+          "function grabScroll" in console and "function putScroll" in console
+          and "putScroll(inner)" in console)
+    check("the report body is a region whose scroll is restored",
+          'class="pm-body" data-scroll=' in console)
+    check("an expanded trace entry keeps its scroll position",
+          'class="ev-body mono" data-scroll=' in console)
+    # Replacing the rows with a placeholder collapsed the page height, and the browser then
+    # clamped the scroll offset - the same jump, by a different route.
+    check("a reloading trace keeps the rows it already has on screen",
+          "const have = traceFor === inc.id && trace && trace.length" in console)
     for kind in ("postmortem_written", "postmortem_failed"):
         check(f"the console has a label for {kind}", f"  {kind}:" in console)
     check("the report is a stage of the pipeline, not a hidden extra",

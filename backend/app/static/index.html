@@ -176,6 +176,9 @@
               border: 1px solid var(--line); border-radius: var(--radius-s);
               font-size: 11.5px; color: var(--ink-2);
               white-space: pre-wrap; max-height: 230px; overflow: auto; line-height: 1.55; }
+  /* The status line inside a prompt panel - loading, or why there is nothing to show. Matched to
+     the summary above it rather than to the prompt body, because it is about the panel. */
+  .peek > .note { margin: 8px 0 0; font-size: 12px; color: var(--ink-3); line-height: 1.5; }
 
   /* ---- right rail: references, not a second copy of the page ---- */
   .opbox { margin-bottom: 8px; padding: 10px 12px; background: var(--panel);
@@ -358,6 +361,10 @@ let traceOpen = false, trace = null, traceFor = null, traceLoading = false;
 /* The report is a separate fetch, like the trace: it is a whole document and most of the time
    nobody is looking at it. Cached per incident and cleared when the selection changes. */
 let pmOpen = false, pm = null, pmFor = null, pmLoading = false;
+/* The prompts each agent was given. Fetched on demand like the trace and for the same reason -
+   a prompt carries the whole evidence block - and cached per incident, so opening a second
+   agent's prompt costs nothing. */
+let prompts = null, promptsFor = null, promptsLoading = false;
 /* The console repaints every three seconds, so anything the reader has opened or closed has to
    survive that. Two sets rather than one, because the evidence blocks default to closed and the
    round groups default to open - a single set cannot express both. */
@@ -369,6 +376,10 @@ document.addEventListener("toggle", e => {
   const k = el.dataset.k;
   if (el.dataset.defaultOpen) el.open ? shut.delete(k) : shut.add(k);
   else el.open ? open.add(k) : open.delete(k);
+  // Prompts are fetched only when a reader actually asks to see one. They are the largest thing
+  // in the trace, and the three-second poll must not carry them.
+  if (el.open && k.startsWith("p-") && selected != null
+      && promptsFor !== selected && !promptsLoading) loadPrompts();
 }, true);
 let healthOpen = false;
 
@@ -577,13 +588,57 @@ function stageHtml(inc, st) {
   const k = `e-${inc.id}-${st.k}-${st.round || 1}`;   // per round: two cards, two toggles
   const peek = st.evidence_preview
     ? `<details class="peek" data-k="${esc(k)}"${open.has(k) ? " open" : ""}>
-         <summary>evidence it was given</summary><pre class="mono">${esc(st.evidence_preview)}</pre></details>` : "";
+         <summary>evidence it was given</summary><pre class="mono" data-scroll="${esc(k)}">${esc(st.evidence_preview)}</pre></details>` : "";
   return `<section class="ev done" data-ag="${esc(st.k)}"${c}>
     <div class="ev-h"><span class="ev-n">${m.name}</span>
       <span class="ev-t">${st.runtime_s ? st.runtime_s.toFixed(1) + "s" : ""}${st.attempts > 1 ? ` · ${st.attempts} tries` : ""}</span></div>
     <div class="ev-from">${esc(m.from)}</div>
-    ${says(st)}${peek}
+    ${says(st)}${peek}${asked(inc, st)}
   </section>`;
+}
+
+/* CrewAI's callback records the whole message array; ADK's records the text it sent. Rendering the
+   array raw would show JSON escaping rather than a prompt, so a message list is unwrapped into
+   role-labelled sections. A prompt long enough to have been clipped will not parse as JSON, which
+   is why the fallback shows it exactly as it was recorded rather than failing. */
+function fmtPrompt(raw) {
+  if (typeof raw !== "string") return String(raw ?? "");
+  const t = raw.trim();
+  if (!t.startsWith("[")) return raw;
+  try {
+    const msgs = JSON.parse(t);
+    if (!Array.isArray(msgs)) return raw;
+    return msgs.map(msg =>
+      `[${String(msg.role || "?").toUpperCase()}]\n${msg.content || ""}`).join("\n\n");
+  } catch { return raw; }
+}
+
+/* What this agent was actually asked, beside the evidence it was given.
+   Closed by default and loaded on first open: see the toggle handler. */
+function asked(inc, st) {
+  const pk = `p-${inc.id}-${st.k}-${st.round || 1}`;
+  const loaded = promptsFor === inc.id && Array.isArray(prompts);
+  let body;
+  if (!loaded) {
+    body = `<div class="note">${promptsLoading ? "loading…" : "opening this loads what the agent was asked"}</div>`;
+  } else {
+    const mine = prompts.filter(p => p.agent === st.k && (p.round || 1) === (st.round || 1));
+    if (mine.length) {
+      body = mine.map((p, i) =>
+        `${mine.length > 1 ? `<div class="note">attempt ${i + 1} of ${mine.length}${
+             i ? " — sent back with the validation error" : ""}</div>` : ""
+         }<pre class="mono" data-scroll="${esc(pk)}-${i}">${esc(fmtPrompt(p.prompt))}</pre>`).join("");
+    } else if (st.k === "rca") {
+      // Not a gap in the recording: this agent's model call happens in its own process behind
+      // A2A, where the event recorder has no incident to attribute it to.
+      body = `<div class="note">This agent runs in its own process, reached over A2A, so its model
+              call is recorded there rather than against this incident.</div>`;
+    } else {
+      body = `<div class="note">No model call was recorded for this agent.</div>`;
+    }
+  }
+  return `<details class="peek" data-k="${esc(pk)}"${open.has(pk) ? " open" : ""}>
+            <summary>prompt it was given</summary>${body}</details>`;
 }
 
 /* What each kind of event means, in the fewest words that are still true. The trace is for
@@ -649,7 +704,7 @@ function evLine(e) {
   if (d.cases && d.cases.length) bits.push(d.cases.map(c => `#${c.incident_id} (${c.score})`).join(", "));
   const text = d.prompt || d.response || d.output || d.error || d.rejected_output || "";
   const body = text
-    ? `<pre class="ev-body mono">${esc(String(text).slice(0, 1400))}</pre>` : "";
+    ? `<pre class="ev-body mono" data-scroll="ev-${e.id}">${esc(String(text).slice(0, 1400))}</pre>` : "";
   return `<li class="tr ${cls}">
     <span class="tr-t mono">${evClock(e.at)}</span>
     <span class="tr-a">${esc(e.agent || "")}${e.round > 1 ? ` <i>r${e.round}</i>` : ""}</span>
@@ -676,9 +731,17 @@ function traceHtml(inc) {
     return `<div class="tracebar"><button id="traceBtn" class="tracebtn">
       Show the execution trace <b>${n}</b> recorded steps</button>${jaegerLink(inc)}</div>`;
   }
-  const body = traceLoading || traceFor !== inc.id
-    ? `<p class="plain">Loading the trace…</p>`
-    : `<ul class="trace">${(trace || []).map(evLine).join("")}</ul>`;
+  // A live incident reloads its trace as steps are added. Replacing the rows with "Loading…"
+  // while that happens collapses the page to a fraction of its height, and the browser clamps
+  // the scroll offset to the shorter page - so the reader was thrown to the top every time a new
+  // step arrived. The rows already in hand stay on screen while the next set is fetched; the
+  // placeholder is only for the first load, when there is genuinely nothing to show.
+  const have = traceFor === inc.id && trace && trace.length;
+  const body = have
+    ? `<ul class="trace">${trace.map(evLine).join("")}</ul>`
+    : traceLoading || traceFor !== inc.id
+      ? `<p class="plain">Loading the trace…</p>`
+      : `<ul class="trace">${(trace || []).map(evLine).join("")}</ul>`;
   return `<div class="tracebar"><button id="traceBtn" class="tracebtn on">
       Hide the execution trace <b>${n}</b> recorded steps</button>${jaegerLink(inc)}</div>${body}`;
 }
@@ -765,7 +828,7 @@ function postmortemHtml(inc) {
 
   const title = (row.output && row.output.title) || "Post-incident report";
   const body = (pmFor === inc.id && pm)
-    ? `<div class="pm-body">${mdToHtml(pm.markdown)}</div>`
+    ? `<div class="pm-body" data-scroll="pm-${inc.id}">${mdToHtml(pm.markdown)}</div>`
     : pmLoading
       ? `<div class="pm-pending">Loading the report…</div>`
       : "";
@@ -777,8 +840,8 @@ function postmortemHtml(inc) {
         <span class="pm-when mono">${row.runtime_s ? row.runtime_s.toFixed(1) + "s to write" : ""}</span>
         <span class="right">
           <button class="btn" id="pmBtn" type="button">${pmOpen ? "Hide" : "Read"} the report</button>
-          <a class="btn primary" href="/incidents/${inc.id}/postmortem.md"
-             download>Download</a>
+          <a class="btn primary" href="/incidents/${inc.id}/postmortem.pdf"
+             download>Download PDF</a>
         </span>
       </div>
       ${pmOpen ? body : ""}
@@ -1161,9 +1224,34 @@ function listHtml() {
   }).join("");
 }
 
+/* Scroll positions inside the detail pane, keyed by something that survives a rebuild.
+ *
+ * paint() replaces innerHTML every three seconds, and a freshly created element starts at the top.
+ * The two outer panes were already put back, but anything with its own scrollbar inside them was
+ * not - so the report (.pm-body, max-height 620px) and an expanded trace entry (.ev-body) jumped
+ * back to the top on every poll, which made a long report unreadable: scroll down, wait a moment,
+ * lose your place. Each such region carries a data-scroll key that is stable across the rebuild,
+ * so its offset can be captured before and restored after. */
+function grabScroll() {
+  const m = new Map();
+  document.querySelectorAll("[data-scroll]").forEach(el => {
+    if (el.scrollTop) m.set(el.dataset.scroll, el.scrollTop);
+  });
+  return m;
+}
+
+function putScroll(m) {
+  if (!m.size) return;
+  document.querySelectorAll("[data-scroll]").forEach(el => {
+    const v = m.get(el.dataset.scroll);
+    if (v) el.scrollTop = v;
+  });
+}
+
 function paint() {
   const a = document.querySelector("aside"), d = document.querySelector("article");
   const as = a.scrollTop, ds = d.scrollTop;
+  const inner = grabScroll();
   document.getElementById("list").innerHTML = listHtml();
   const sel = items.find(i => i.id === selected);
   document.getElementById("detail").innerHTML = sel ? detail(sel)
@@ -1189,6 +1277,7 @@ function paint() {
   document.querySelectorAll("[data-reject]").forEach(b =>
     b.onclick = () => decide(Number(b.dataset.reject), "reject", b));
   a.scrollTop = as; d.scrollTop = ds;
+  putScroll(inner);
 }
 
 /* The only call this console makes that changes the running system. Both buttons are disabled
@@ -1248,6 +1337,21 @@ async function loadTrace() {
     traceFor = id;
   }
   traceLoading = false;
+  paint();
+}
+
+async function loadPrompts() {
+  const id = selected;
+  if (id == null) return;
+  promptsLoading = true;
+  try {
+    prompts = await (await fetch(`/incidents/${id}/prompts`)).json();
+    promptsFor = id;
+  } catch {
+    prompts = [];
+    promptsFor = id;
+  }
+  promptsLoading = false;
   paint();
 }
 

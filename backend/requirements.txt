@@ -1,6 +1,6 @@
 ﻿# Generated with: uv pip freeze --python .venv\Scripts\python.exe  (Python 3.12.3)
 # Direct dependencies: crewai, google-adk, fastapi, uvicorn[standard], httpx, pydantic,
-#                      mcp, qdrant-client, fastembed, opentelemetry-sdk
+#                      mcp, qdrant-client, fastembed, opentelemetry-sdk, reportlab
 a2a-sdk==1.2.3
 aiofiles==24.1.0
 aiohappyeyeballs==2.7.1
@@ -187,6 +187,7 @@ pyyaml==6.0.3
 qdrant-client==1.20.0
 referencing==0.37.0
 regex==2026.1.15
+reportlab==5.1.0
 requests==2.34.2
 requests-oauthlib==2.0.0
 requests-toolbelt==1.0.0

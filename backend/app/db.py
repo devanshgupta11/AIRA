@@ -330,6 +330,38 @@ def get_events(incident_id: int, limit: int = 2000) -> list[dict]:
     return out
 
 
+def get_prompts(incident_id: int) -> list[dict]:
+    """What each agent was actually asked, per agent and round.
+
+    Read from the `model_call_started` events the frameworks' callbacks already record, so this
+    adds no new recording path: it exposes what the trace already holds, without the responses and
+    the flow events that make the full trace too heavy for the console's three-second poll.
+
+    An agent can appear more than once for one round - a corrective retry is a second model call -
+    so the rows are returned in order and the caller labels them as attempts. The RCA agent has no
+    rows at all: its model call happens in its own process behind A2A, where there is no incident
+    context for the recorder to attribute an event to.
+    """
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT agent, round, source, detail FROM agent_events "
+            "WHERE incident_id = ? AND kind = 'model_call_started' ORDER BY id",
+            (incident_id,),
+        ).fetchall()
+    out = []
+    for r in rows:
+        try:
+            detail = json.loads(r["detail"]) if r["detail"] else {}
+        except json.JSONDecodeError:
+            continue
+        prompt = detail.get("prompt")
+        if not prompt:
+            continue
+        out.append({"agent": r["agent"], "round": r["round"], "source": r["source"],
+                    "model": detail.get("model"), "prompt": prompt})
+    return out
+
+
 def event_counts(incident_ids: list[int]) -> dict[int, int]:
     """How many events each incident recorded, for the list view."""
     if not incident_ids:

@@ -12,7 +12,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from . import (config, db, events, guardrails, http_util, mcp_client, memory,  # noqa: E501
-               postmortem, prometheus_tool, remediation, tracing, triage_agent)
+               postmortem, postmortem_pdf, prometheus_tool, remediation, tracing, triage_agent)
 # CrewAI, ADK and litellm together cost roughly 300 MB of resident memory, and an archive
 # deployment never calls any of them: there is no stack to investigate, so the webhook is closed
 # and the RCA agent is not part of the deployment. Importing them anyway would put a read-only
@@ -440,13 +440,43 @@ def incident_postmortem(incident_id: int):
 
 @app.get("/incidents/{incident_id}/postmortem.md")
 def incident_postmortem_file(incident_id: int):
-    """The same report as a downloadable Markdown file."""
+    """The same report as a downloadable Markdown file.
+
+    Kept alongside the PDF rather than replaced by it. The console offers the PDF, because that is
+    what somebody sends or prints, but Markdown is the format this report is assembled in and the
+    one that stays diffable and greppable - and removing a published route to add a format would
+    break anything already pointing at it.
+    """
     md = postmortem.markdown(incident_id)
     if md is None:
         raise HTTPException(404, f"no incident {incident_id}")
     inc = db.get(incident_id)
     name = f"postmortem-{incident_id}-{(inc.get('service') or 'incident')}.md"
     return Response(content=md, media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.get("/incidents/{incident_id}/postmortem.pdf")
+def incident_postmortem_pdf(incident_id: int):
+    """The report as a PDF: the copy somebody prints, attaches or files after the incident.
+
+    Typeset from exactly the same Markdown the console renders, so the downloaded document and the
+    page on screen cannot disagree - which is the point of a report that outlives the incident.
+    """
+    md = postmortem.markdown(incident_id)
+    if md is None:
+        raise HTTPException(404, f"no incident {incident_id}")
+    inc = db.get(incident_id)
+    service = inc.get("service") or "incident"
+    title = f"AIRA postmortem — incident #{incident_id} · {inc['alertname']} on {service}"
+    try:
+        pdf = postmortem_pdf.render(md, title=title)
+    except Exception as e:  # noqa: BLE001 - a typesetting failure must name itself, not 500 blankly
+        log.exception("incident %s: could not render the postmortem as PDF", incident_id)
+        raise HTTPException(500, f"could not render the report as PDF: {type(e).__name__}: {e}"
+                            ) from e
+    name = f"postmortem-{incident_id}-{service}.pdf"
+    return Response(content=pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
@@ -500,6 +530,19 @@ def incident_events(incident_id: int, limit: int = 2000):
     if not db.get(incident_id):
         raise HTTPException(404, "incident not found")
     return db.get_events(incident_id, limit=limit)
+
+
+@app.get("/incidents/{incident_id}/prompts")
+def incident_prompts(incident_id: int):
+    """Exactly what each agent was asked, per agent and round.
+
+    Served separately from /findings for the same reason the trace is: a prompt carries the whole
+    evidence block, and the console polls /incidents every three seconds. This is fetched only
+    when a reader opens a prompt, so the poll stays small.
+    """
+    if not db.get(incident_id):
+        raise HTTPException(404, "incident not found")
+    return db.get_prompts(incident_id)
 
 
 @app.get("/incidents/{incident_id}/findings")
