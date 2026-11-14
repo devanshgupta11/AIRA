@@ -5,9 +5,11 @@ reasoning agents. This module is the ADK counterpart of base.py and keeps the tw
 same things - the number-discipline rules, JSON extraction, the single corrective retry, and the
 semantic `check` hook that rejects an answer contradicting its own evidence.
 
-Both frameworks share ONE local model. The laptop has ~1.4 GB of spare VRAM against a 5.6 GB
-resident model, so a second model is not an option; ADK reaches the same Ollama instance through
-LiteLLM (google.adk.models.lite_llm.LiteLlm -> 'ollama_chat/<model>').
+Both frameworks use the same Gemini model and the same key pool. ADK reaches Gemini through
+LiteLLM (google.adk.models.lite_llm.LiteLlm -> 'gemini/<model>'), wrapped in _FailoverLiteLlm so a
+rate-limited key is swapped for the next one inside the model call itself. It has to sit there:
+the RCA agent is served over A2A as one fixed Agent object, so nothing outside it can rebuild it
+on another key.
 
 Constructing a LiteLlm agent costs ~19s the first time while LiteLLM initialises, and ~1s
 afterwards, so agents are built once and cached rather than per call.
@@ -16,17 +18,20 @@ afterwards, so agents are built once and cached rather than per call.
 import os
 import time
 import warnings
-from typing import TypeVar
+from typing import AsyncGenerator, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
 from .. import config  # noqa: F401  (sets telemetry env vars before frameworks import)
-from ..config import OLLAMA_MODEL, OLLAMA_URL
+from ..config import GEMINI_MODEL
 from . import base
-from .. import events, guardrails, http_util
+from .. import events, guardrails, http_util, llm_keys
 
-# Keep ADK fully local: no Vertex lookups.
+# Google AI Studio keys, not Vertex AI.
 os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "0")
+# ADK suggests its native Gemini class over LiteLLM. LiteLLM is used on purpose: it takes the API key
+# per call, which is what lets _FailoverLiteLlm switch keys inside the A2A-served agent.
+os.environ.setdefault("ADK_SUPPRESS_GEMINI_LITELLM_WARNINGS", "true")
 # OTEL_SDK_DISABLED is deliberately not set here either - see the note in config.py. It disabled
 # AIRA's own tracing along with ADK's.
 
@@ -62,12 +67,43 @@ def _loop_key() -> int:
         return 0
 
 
+class _FailoverLiteLlm(LiteLlm):
+    """LiteLlm that picks the API key per call and moves to the next key when Gemini refuses one.
+
+    Each attempt runs on a copy of this model carrying that attempt's key, rather than writing the
+    key into this shared object: two incidents can be inside the RCA agent at once, and a key
+    written here mid-call could be read by the other one.
+
+    A refusal is only retried on another key if nothing has been returned yet. Once part of an
+    answer has gone back to ADK, re-sending would duplicate it, so the error propagates instead.
+    """
+
+    async def generate_content_async(self, llm_request, stream: bool = False
+                                     ) -> AsyncGenerator:
+        deadline = time.monotonic() + llm_keys.MAX_WAIT_S
+        while True:
+            idx, key = await llm_keys.POOL.acquire_async(deadline)
+            attempt = self.model_copy()
+            attempt._additional_args = {**self._additional_args, "api_key": key}
+            yielded = False
+            try:
+                async for response in LiteLlm.generate_content_async(attempt, llm_request, stream):
+                    yielded = True
+                    yield response
+                return
+            except Exception as e:  # noqa: BLE001 - re-raised unless it is the key's fault
+                kind = llm_keys.classify(e)
+                if kind is None or yielded:
+                    raise
+                llm_keys.POOL.report(idx, kind, e)
+
+
 def make_adk_agent(name: str, instruction: str) -> Agent:
-    """An ADK agent on the shared local model. Cached: rebuilding one re-initialises LiteLLM."""
+    """An ADK agent on the shared Gemini model. Cached: rebuilding one re-initialises LiteLLM."""
     if name not in _agents:
         _agents[name] = Agent(
             name=name,
-            model=LiteLlm(model=f"ollama_chat/{OLLAMA_MODEL}", api_base=OLLAMA_URL, temperature=0.1),
+            model=_FailoverLiteLlm(model=f"gemini/{GEMINI_MODEL}", temperature=0.1),
             instruction=instruction,
             # ADK's own observation hooks rather than a wrapper of our own. They record and return
             # None, so they never substitute a response.
@@ -108,6 +144,13 @@ async def _ask(agent: Agent, prompt: str) -> str:
     The events are collected in arrival order and reduced by pick_answer(), which explains why the
     final event wins rather than every event being concatenated.
     """
+    if type(agent).__name__ == "RemoteA2aAgent":
+        # The model call itself happens in the remote agent's process, which has no incident to
+        # file its callback events under, so the prompt would otherwise go unrecorded. This is
+        # exactly the text sent over A2A; the remote agent adds its own instruction on top.
+        events.record("a2a", "a2a_request_sent",
+                      detail={"model": config.LLM_MODEL, "to": agent.name,
+                              "prompt": events.clip(prompt, events.MAX_PROMPT)})
     runner = _runner(agent)
     session = await runner.session_service.create_session(app_name=APP_NAME, user_id=USER_ID)
     message = types.Content(role="user", parts=[types.Part(text=prompt)])
@@ -120,14 +163,14 @@ async def _ask(agent: Agent, prompt: str) -> str:
         fn = getattr(event, "is_final_response", None)
         return bool(callable(fn) and fn())
 
-    events: list[tuple[str, bool]] = []
+    replies: list[tuple[str, bool]] = []
     async for event in runner.run_async(
         user_id=USER_ID, session_id=session.id, new_message=message
     ):
         text = _text(event)
         if text:
-            events.append((text, _is_final(event)))
-    return pick_answer(events)
+            replies.append((text, _is_final(event)))
+    return pick_answer(replies)
 
 
 RCA_A2A_CARD = os.getenv(

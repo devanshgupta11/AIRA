@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Starts the whole AIRA mid-semester stack and waits until every part is healthy.
-  Docker Desktop -> OpenTelemetry Demo + Alertmanager -> Ollama (+ model warm-up) -> AIRA backend.
+  Docker Desktop -> OpenTelemetry Demo + Alertmanager -> Gemini key check -> AIRA backend.
 #>
 . "$PSScriptRoot\common.ps1"
 $total = [Diagnostics.Stopwatch]::StartNew()
@@ -43,24 +43,16 @@ $bad = docker ps -a --filter 'label=com.docker.compose.project=opentelemetry-dem
 $running = (docker ps --filter 'label=com.docker.compose.project=opentelemetry-demo' --format '{{.Names}}' | Measure-Object).Count
 if ($bad) { $bad | ForEach-Object { Write-Warn2 "container: $_" }; $failed = $true } else { Write-Ok "$running containers running, none exited/unhealthy" }
 
-Write-Step "Ollama (models in $OllamaModels)"
-if (-not (Test-Http 'http://localhost:11434/api/version')) {
-    $env:OLLAMA_MODELS = $OllamaModels
-    $env:OLLAMA_KEEP_ALIVE = '60m'
-    Start-Process -FilePath $OllamaExe -ArgumentList 'serve' -WindowStyle Hidden `
-        -RedirectStandardOutput (Join-Path $LogDir 'ollama.out.log') -RedirectStandardError (Join-Path $LogDir 'ollama.log')
-    if (-not (Wait-Until { Test-Http 'http://localhost:11434/api/version' } 60 'Ollama server up on :11434')) { $failed = $true }
-} else { Write-Ok 'Ollama server already running on :11434' }
-
-Write-Info "Warming up $OllamaModel (first load into GPU memory can take ~30s)"
-try {
-    $sw = [Diagnostics.Stopwatch]::StartNew()
-    $body = @{ model = $OllamaModel; prompt = 'Reply with the single word: ready'; stream = $false; keep_alive = '60m' } | ConvertTo-Json
-    $r = Invoke-RestMethod -Method Post 'http://localhost:11434/api/generate' -Body $body -ContentType 'application/json' -TimeoutSec 180
-    Write-Ok ("model warm: replied '{0}' in {1:N1}s" -f $r.response.Trim(), $sw.Elapsed.TotalSeconds)
-    $ps = (Invoke-RestMethod 'http://localhost:11434/api/ps').models | Where-Object name -eq $OllamaModel
-    if ($ps) { Write-Info ("loaded: {0:N1} GB, {1:N1} GB in GPU memory" -f ($ps.size / 1GB), ($ps.size_vram / 1GB)) }
-} catch { Write-Fail "model warm-up failed: $_"; $failed = $true }
+Write-Step "Gemini API keys (backend\.env)"
+# The agents call Gemini; nothing runs locally for the model. This only checks that keys are
+# configured - it makes no call, so it spends no quota. /health reports which keys are usable.
+$envFile = Join-Path $BackendDir '.env'
+$keyCount = 0
+if (Test-Path $envFile) {
+    $keyCount = (Get-Content $envFile | Where-Object { $_ -match '^\s*GEMINI_API_KEY(_\d+)?\s*=\s*\S+' } | Measure-Object).Count
+}
+if ($keyCount -gt 0) { Write-Ok "$keyCount Gemini API key(s) configured" }
+else { Write-Fail "no Gemini API key in $envFile - paste them as GEMINI_API_KEY_1=..., GEMINI_API_KEY_2=..."; $failed = $true }
 
 Write-Step "RCA agent over A2A (ADK on :8001)"
 if (-not (Get-RcaProcess)) {

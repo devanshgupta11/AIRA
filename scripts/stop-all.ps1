@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Stops the AIRA backend, the MCP tools server, the RCA agent, the demo containers, and Ollama.
+  Stops the AIRA backend, the MCP tools server, the RCA agent, and the demo containers.
   Prometheus history (named volume) and the incident database are kept.
 #>
 . "$PSScriptRoot\common.ps1"
@@ -35,8 +35,5 @@ if (Test-DockerEngine) {
     if ($left) { Write-Fail "still running: $($left -join ', ')" } else { Write-Ok 'all demo containers stopped' }
 } else { Write-Info 'Docker engine not running - nothing to stop' }
 
-Write-Step "Ollama"
-$ol = Get-Process -Name 'ollama', 'ollama app' -ErrorAction SilentlyContinue
-if ($ol) { $ol | Stop-Process -Force; Write-Ok "stopped Ollama ($($ol.Count) process(es))" } else { Write-Info 'Ollama was not running' }
 
 Write-Host "`nAIRA stack stopped. Docker Desktop itself is left running." -ForegroundColor Green

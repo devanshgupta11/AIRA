@@ -1,7 +1,7 @@
 """Shared plumbing for every AIRA agent.
 
-One local model serves all agents (the laptop has ~1.4 GB of free VRAM, so a second model will not
-fit), and every agent follows the same contract: it reasons only over supplied evidence, returns
+One Gemini model serves all agents, through a pool of API keys that fails over when one is
+rate-limited (llm_keys.py), and every agent follows the same contract: it reasons only over supplied evidence, returns
 JSON validated against a Pydantic schema, and gets exactly one retry carrying the validation error
 before the incident is given an honest error state.
 
@@ -18,8 +18,8 @@ from typing import TypeVar
 from pydantic import BaseModel, ValidationError
 
 from .. import config  # noqa: F401  (sets CrewAI telemetry env vars before crewai is imported)
-from .. import events, guardrails
-from ..config import OLLAMA_MODEL, OLLAMA_URL
+from .. import events, guardrails, llm_keys
+from ..config import GEMINI_MODEL
 from crewai import LLM, Agent, Crew, Process, Task  # noqa: E402
 
 T = TypeVar("T", bound=BaseModel)
@@ -56,18 +56,22 @@ class AgentError(Exception):
         self.raw = raw
 
 
-def make_llm() -> LLM:
-    """The single shared local model. CrewAI 1.15.23 routes 'ollama/<model>' to its native
-    OpenAI-compatible provider against Ollama's /v1 endpoint."""
-    return LLM(model=f"ollama/{OLLAMA_MODEL}", base_url=OLLAMA_URL, temperature=0.1, timeout=150)
+def make_llm(api_key: str | None = None) -> LLM:
+    """The shared Gemini model, on one particular API key.
+
+    CrewAI 1.15.23 routes 'gemini/<model>' to its native Gemini provider (google-genai). With no
+    key the provider defers building its client, which is what make_agent relies on: the key is
+    chosen per call, in kickoff(), not when the agent is defined.
+    """
+    return LLM(model=f"gemini/{GEMINI_MODEL}", api_key=api_key, temperature=0.1)
 
 
-def make_agent(role: str, goal: str, backstory: str) -> Agent:
+def make_agent(role: str, goal: str, backstory: str, api_key: str | None = None) -> Agent:
     return Agent(
         role=role,
         goal=goal,
         backstory=backstory,
-        llm=make_llm(),
+        llm=make_llm(api_key),
         allow_delegation=False,
         max_iter=2,
         verbose=False,
@@ -189,13 +193,25 @@ def parse(raw: str, model_cls: type[T]) -> T:
 
 
 def kickoff(agent: Agent, description: str, hint: str) -> str:
-    task = Task(
-        description=description,
-        expected_output="One JSON object matching this structure:\n" + hint,
-        agent=agent,
-    )
-    crew = Crew(agents=[task.agent], tasks=[task], process=Process.sequential, verbose=False, tracing=False)
-    return str(crew.kickoff().raw)
+    """One model turn, on whichever Gemini key is currently usable.
+
+    The agent is rebuilt on the chosen key for each attempt rather than having its llm swapped in
+    place: CrewAI's Agent keeps the llm it was built with inside its executor, and rebuilding is
+    the documented path. If Gemini refuses the key (rate limit or invalid), llm_keys moves to the
+    next key and this runs again; any other failure propagates exactly as before.
+    """
+    def attempt(api_key: str) -> str:
+        on_key = make_agent(agent.role, agent.goal, agent.backstory, api_key=api_key)
+        task = Task(
+            description=description,
+            expected_output="One JSON object matching this structure:\n" + hint,
+            agent=on_key,
+        )
+        crew = Crew(agents=[on_key], tasks=[task], process=Process.sequential, verbose=False,
+                    tracing=False)
+        return str(crew.kickoff().raw)
+
+    return llm_keys.call_with_failover(attempt)
 
 
 def run_agent(agent: Agent, prompt: str, hint: str, model_cls: type[T], context: str,

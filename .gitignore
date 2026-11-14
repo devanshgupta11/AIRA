@@ -28,3 +28,8 @@ node_modules
 
 *.md
 docs/
+
+# Secrets: Gemini API keys live in backend/.env (template: backend/.env.example)
+.env
+*.env
+!.env.example

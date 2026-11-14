@@ -338,14 +338,16 @@ def get_prompts(incident_id: int) -> list[dict]:
     the flow events that make the full trace too heavy for the console's three-second poll.
 
     An agent can appear more than once for one round - a corrective retry is a second model call -
-    so the rows are returned in order and the caller labels them as attempts. The RCA agent has no
-    rows at all: its model call happens in its own process behind A2A, where there is no incident
-    context for the recorder to attribute an event to.
+    so the rows are returned in order and the caller labels them as attempts. The RCA agent's model
+    call happens in its own process behind A2A, where there is no incident to attribute an event
+    to, so its rows are the requests the backend sent it (`a2a_request_sent`). Incidents recorded
+    before that event existed have no RCA rows.
     """
     with connect() as conn:
         rows = conn.execute(
             "SELECT agent, round, source, detail FROM agent_events "
-            "WHERE incident_id = ? AND kind = 'model_call_started' ORDER BY id",
+            "WHERE incident_id = ? AND kind IN ('model_call_started', 'a2a_request_sent') "
+            "ORDER BY id",
             (incident_id,),
         ).fetchall()
     out = []

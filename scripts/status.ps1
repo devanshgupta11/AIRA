@@ -24,7 +24,6 @@ $checks = [ordered]@{
     'Load generator'        = 'http://localhost:8080/loadgen/'
     'Prometheus :9090'      = 'http://localhost:9090/-/ready'
     'Alertmanager :9093'    = 'http://localhost:9093/-/ready'
-    'Ollama :11434'         = 'http://localhost:11434/api/version'
     'AIRA backend :8000'    = 'http://localhost:8000/health'
     'RCA agent A2A :8001'   = 'http://127.0.0.1:8001/.well-known/agent-card.json'
 }

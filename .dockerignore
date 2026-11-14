@@ -38,3 +38,6 @@ deck/
 # Local environment files must never reach an image that gets pushed anywhere.
 .env
 *.env
+
+# Any .env below the root as well (backend/.env holds the Gemini API keys).
+**/.env

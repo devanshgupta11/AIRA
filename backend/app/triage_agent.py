@@ -1,4 +1,4 @@
-"""CrewAI Triage Agent running on a local Ollama model.
+"""CrewAI Triage Agent running on Gemini (see llm_keys.py for the key failover).
 
 The agent receives one alert plus the live Prometheus evidence and returns a structured triage
 summary. It reasons only over that evidence and takes no actions. Output is validated with

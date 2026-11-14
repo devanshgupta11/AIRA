@@ -19,7 +19,7 @@ import time
 from . import (change_agent, critic_agent, log_agent, metrics_agent, postmortem_agent,
                rca_agent, remediation_agent)
 from .. import db, events, mcp_client, memory, postmortem, remediation, tracing
-from ..config import AGENT_TIMEOUT_S, MEMORY_ENABLED, OLLAMA_MODEL
+from ..config import AGENT_TIMEOUT_S, LLM_MODEL, MEMORY_ENABLED
 
 log = logging.getLogger("aira.orchestrator")
 
@@ -156,7 +156,7 @@ async def _investigate(incident_id: int, inc: dict, triage: dict | None) -> dict
     for name, skip in decisions.items():
         db.upsert_finding(incident_id, name, seq=SEQ[name],
                           status="skipped" if skip else "pending",
-                          skip_reason=skip, model=None if skip else OLLAMA_MODEL)
+                          skip_reason=skip, model=None if skip else LLM_MODEL)
     with events.investigating(incident_id, "orchestrator"):
         events.record("aira", "investigation_started",
                       detail={"alert": inc["alertname"], "service": inc.get("service"),
@@ -429,13 +429,29 @@ async def write_postmortem(incident_id: int, trigger: str) -> dict | None:
                 if f["agent"] == postmortem_agent.AGENT_NAME and f["status"] == "done"]
     if existing:
         return (existing[0].get("output") or {})
+    # Two triggers can arrive together - Alertmanager re-sends "resolved" on its repeat interval
+    # (incident 418 received it twice, a minute apart). The second must not start a second report
+    # while the first is still being written.
+    if incident_id in _writing_postmortem:
+        return None
+    _writing_postmortem.add(incident_id)
+    try:
+        return await _write_postmortem(incident_id, trigger)
+    finally:
+        _writing_postmortem.discard(incident_id)
+
+
+_writing_postmortem: set[int] = set()
+
+
+async def _write_postmortem(incident_id: int, trigger: str) -> dict | None:
 
     facts = postmortem.facts(incident_id)
     if not facts:
         return None
 
     db.upsert_finding(incident_id, postmortem_agent.AGENT_NAME, seq=SEQ_POSTMORTEM,
-                      status="running", started_at=db.now_iso(), model=OLLAMA_MODEL)
+                      status="running", started_at=db.now_iso(), model=LLM_MODEL)
     t0 = time.perf_counter()
     try:
         with events.investigating(incident_id, postmortem_agent.AGENT_NAME):
@@ -504,7 +520,7 @@ async def propose_remediation(incident_id: int, attempt: int = 1) -> dict | None
 
     db.upsert_finding(incident_id, remediation_agent.AGENT_NAME, round_=attempt,
                       seq=SEQ_REMEDIATION, status="running", started_at=db.now_iso(),
-                      model=OLLAMA_MODEL)
+                      model=LLM_MODEL)
     try:
         with events.investigating(incident_id, remediation_agent.AGENT_NAME, attempt):
             result, attempts, secs = await asyncio.wait_for(
@@ -624,7 +640,7 @@ async def _run_rca(incident_id: int, round_no: int) -> dict | None:
     inc, findings = db.get(incident_id), _latest(db.get_findings(incident_id))
     started = db.now_iso()
     db.upsert_finding(incident_id, rca_agent.AGENT_NAME, round_=round_no, seq=SEQ_RCA,
-                      status="running", started_at=started, model=OLLAMA_MODEL)
+                      status="running", started_at=started, model=LLM_MODEL)
     t0 = time.perf_counter()
     prior: list[dict] = []
     try:
@@ -660,7 +676,7 @@ async def _run_rca(incident_id: int, round_no: int) -> dict | None:
 async def _run_critic(incident_id: int, rca: dict, round_no: int) -> dict | None:
     inc, findings = db.get(incident_id), _latest(db.get_findings(incident_id))
     db.upsert_finding(incident_id, critic_agent.AGENT_NAME, round_=round_no, seq=SEQ_CRITIC,
-                      status="running", started_at=db.now_iso(), model=OLLAMA_MODEL)
+                      status="running", started_at=db.now_iso(), model=LLM_MODEL)
     t0 = time.perf_counter()
     try:
         # CrewAI refuses to run synchronously inside a running event loop, same as the investigators.
@@ -713,7 +729,7 @@ async def _reinvestigate(incident_id: int, gaps: list[dict], round_no: int) -> l
             continue
         db.upsert_finding(incident_id, name, round_=round_no, seq=SEQ[name], status="running",
                           started_at=db.now_iso(), evidence=ev, evidence_text=ev.get("text"),
-                          model=OLLAMA_MODEL)
+                          model=LLM_MODEL)
         try:
             with events.investigating(incident_id, name, round_no):
                 result, attempts, secs = await asyncio.wait_for(

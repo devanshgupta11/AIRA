@@ -17,6 +17,7 @@ Localhost only. The agent card is published at /.well-known/agent-card.json.
 """
 
 from google.adk.a2a.utils.agent_to_a2a import to_a2a
+from google.adk.models import lite_llm
 
 from . import adk_base, rca_agent
 from .. import tracing
@@ -27,6 +28,12 @@ PORT = 8001
 # The same cached agent the in-process path would use, so behaviour is identical on both sides of
 # the boundary - only the transport differs.
 agent = adk_base.make_adk_agent("aira_rca", rca_agent.INSTRUCTION)
+
+# Load LiteLLM now, while the server starts, rather than on the first RCA request. ADK imports it
+# lazily and synchronously on first use, which froze this process's event loop for several
+# seconds in the middle of the first incident: the agent card stopped answering and /health
+# reported the RCA agent unreachable while it was in fact working.
+lite_llm._ensure_litellm_imported()
 
 # Its own exporter, and the caller's trace continued rather than restarted:
 # this process is where the RCA model call actually happens.

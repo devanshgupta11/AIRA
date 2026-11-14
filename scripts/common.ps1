@@ -11,9 +11,6 @@ $LogDir       = Join-Path $AiraRoot 'logs'
 $VenvPython   = Join-Path $BackendDir '.venv\Scripts\python.exe'
 $FlagCtl      = Join-Path $PSScriptRoot 'flagctl.py'
 $ScenarioFile = Join-Path $PSScriptRoot 'scenarios.json'
-$OllamaExe    = Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe'
-$OllamaModels = Join-Path $AiraRoot 'ollama-models'
-$OllamaModel  = 'qwen2.5:7b-instruct'
 
 $Urls = [ordered]@{
     'AIRA console'       = 'http://localhost:8000/'

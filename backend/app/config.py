@@ -3,6 +3,14 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# backend/.env holds the Gemini API keys and the model name. Loaded first, by path rather than from
+# the working directory, so the backend, the RCA agent's process and the scripts all read the same
+# file wherever they are started from. Variables already set in the environment win, so a cloud
+# deployment can supply them as secrets with no .env file at all.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
+
 # Keep CrewAI fully local: no anonymous telemetry, no trace upload. Must be set before crewai is
 # imported. These two variables are what stop CrewAI reporting anything outward.
 os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
@@ -20,8 +28,11 @@ LOG_DIR = Path(os.getenv("AIRA_LOG_DIR", BACKEND_DIR.parent / "logs"))
 
 PROMETHEUS_URL = os.getenv("AIRA_PROMETHEUS_URL", "http://localhost:9090")
 ALERTMANAGER_URL = os.getenv("AIRA_ALERTMANAGER_URL", "http://localhost:9093")
-OLLAMA_URL = os.getenv("AIRA_OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("AIRA_OLLAMA_MODEL", "qwen2.5:7b-instruct")
+# The model every agent uses, in both frameworks, through the Gemini API (Google AI Studio keys).
+# The keys themselves are read by llm_keys.py, which also fails over between them.
+GEMINI_MODEL = os.getenv("AIRA_GEMINI_MODEL", "gemini-3.5-flash")
+# The name recorded against each incident and agent run.
+LLM_MODEL = f"gemini/{GEMINI_MODEL}"
 
 # ---------------------------------------------------------------- incident memory
 #
@@ -40,7 +51,7 @@ MEMORY_ENABLED = os.getenv("AIRA_MEMORY_ENABLED", "1").lower() not in ("0", "fal
 
 # ---------------------------------------------------------------- deployment mode
 #
-# "full"    everything: the monitoring stack, Ollama, the MCP server and the RCA agent are all
+# "full"    everything: the monitoring stack, the Gemini keys, the MCP server and the RCA agent are all
 #           reachable, and AIRA can investigate live incidents. This is the laptop.
 # "archive" the agentic layer and the console are running, but the stack they investigate is not
 #           part of this deployment. Recorded incidents, their findings, traces and the memory

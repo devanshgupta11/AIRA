@@ -22,8 +22,8 @@ if config.ARCHIVE:
     adk_base = orchestrator = None  # type: ignore[assignment]
 else:
     from .agents import adk_base, orchestrator
-from .config import (AGENT_TIMEOUT_S, ALERTMANAGER_URL, LOG_DIR, OLLAMA_MODEL, OLLAMA_URL,
-                     PROMETHEUS_URL)
+from .config import AGENT_TIMEOUT_S, ALERTMANAGER_URL, LLM_MODEL, LOG_DIR, PROMETHEUS_URL
+from . import llm_keys
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,7 +39,8 @@ STATIC = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init()
-    log.info("AIRA backend started; prometheus=%s ollama=%s model=%s", PROMETHEUS_URL, OLLAMA_URL, OLLAMA_MODEL)
+    log.info("AIRA backend started; prometheus=%s model=%s gemini_keys=%d", PROMETHEUS_URL, LLM_MODEL,
+             len(llm_keys.POOL))
     # Subscribed once per process: CrewAI's bus is global, so wiring it per agent run would add a
     # duplicate handler for every incident.
     if events.wire_crewai():
@@ -126,8 +127,38 @@ async def reconcile_firing() -> int:
     return closed
 
 
+# Incidents whose investigation has not finished yet - including those still queued for
+# _agent_slot behind another incident. The postmortem must not be written for one of these: it
+# would describe an investigation that is still running, with the root cause, the Critic and the
+# remediation all missing. That happened whenever an alert resolved mid-investigation (incidents
+# 415, 418 and 419: the report was written before the RCA agent ran, and for 419 before its
+# triage had even started). The resolve webhook now defers to the end of the investigation.
+_investigating: set[int] = set()
+
+
 async def investigate(incident_id: int) -> None:
-    """For a new firing incident: collect live Prometheus evidence, then run the Triage agent."""
+    """Investigate a firing incident, then settle it if its alert resolved in the meantime."""
+    _investigating.add(incident_id)
+    try:
+        await _investigate(incident_id)
+    finally:
+        _investigating.discard(incident_id)
+    if orchestrator is None:
+        return
+    inc = db.get(incident_id)
+    if inc and inc["status"] == "resolved":
+        # The alert ended while the agents were working, so the resolve webhook left the report
+        # to us. A proposal made after the alert resolved has nothing left to act on.
+        closed = db.close_pending_actions(
+            incident_id, "the incident resolved before this was decided")
+        if closed:
+            log.info("incident %s: resolved during the investigation; closed %d proposal(s)",
+                     incident_id, closed)
+        await orchestrator.write_postmortem(incident_id, "incident resolved during investigation")
+
+
+async def _investigate(incident_id: int) -> None:
+    """Collect live Prometheus evidence, run the Triage agent, then the orchestrated investigation."""
     inc = db.get(incident_id)
     try:
         evidence = await asyncio.to_thread(prometheus_tool.collect, inc["service"])
@@ -140,11 +171,11 @@ async def investigate(incident_id: int) -> None:
 
     async with _agent_slot:
         started = db.now_iso()
-        db.update(incident_id, agent_status="running", agent_model=OLLAMA_MODEL, agent_started_at=started)
+        db.update(incident_id, agent_status="running", agent_model=LLM_MODEL, agent_started_at=started)
         db.upsert_finding(incident_id, "triage", seq=SEQ_TRIAGE, status="running",
-                          model=OLLAMA_MODEL, started_at=started,
+                          model=LLM_MODEL, started_at=started,
                           evidence_text=db.get(incident_id)["evidence_text"])
-        log.info("incident %s: triage agent started (%s)", incident_id, OLLAMA_MODEL)
+        log.info("incident %s: triage agent started (%s)", incident_id, LLM_MODEL)
         t0 = time.perf_counter()
         try:
             with events.investigating(incident_id, "triage"):
@@ -164,7 +195,7 @@ async def investigate(incident_id: int) -> None:
         except asyncio.TimeoutError:
             _fail_triage(incident_id, f"agent did not finish within {AGENT_TIMEOUT_S:.0f}s", t0)
             log.error("incident %s: triage timed out", incident_id)
-        except Exception as e:  # noqa: BLE001 - e.g. Ollama unreachable
+        except Exception as e:  # noqa: BLE001 - e.g. Gemini unreachable or every key rate-limited
             _fail_triage(incident_id, f"{type(e).__name__}: {e}", t0)
             log.exception("incident %s: triage crashed", incident_id)
 
@@ -235,8 +266,14 @@ async def alerts(request: Request, background: BackgroundTasks):
             # whatever route the incident took, this is where it is over. Idempotent, so the
             # earlier hooks still win when they fire first.
             if orchestrator is not None:
-                background.add_task(orchestrator.write_postmortem, incident_id,
-                                    "incident resolved")
+                if incident_id in _investigating:
+                    # Written by investigate() once the agents finish, so the report covers the
+                    # whole investigation rather than whatever had run by now.
+                    log.info("incident %s resolved mid-investigation: postmortem deferred until "
+                             "the investigation finishes", incident_id)
+                else:
+                    background.add_task(orchestrator.write_postmortem, incident_id,
+                                        "incident resolved")
     return {"received": len(results), "incidents": results}
 
 
@@ -554,7 +591,7 @@ def incident_findings(incident_id: int):
 
 # Dependencies that only exist where the monitored stack does. In an archive deployment their
 # absence is the design, not a fault, so they are reported as such rather than as failures.
-LOCAL_ONLY = ("prometheus", "ollama", "mcp_tools", "tracing", "rca_a2a")
+LOCAL_ONLY = ("prometheus", "llm", "mcp_tools", "tracing", "rca_a2a")
 
 
 @app.get("/health")
@@ -566,13 +603,20 @@ async def health():
             checks["prometheus"] = {"ok": r.status_code == 200, "url": PROMETHEUS_URL, "detail": r.text.strip()}
         except Exception as e:  # noqa: BLE001
             checks["prometheus"] = {"ok": False, "url": PROMETHEUS_URL, "detail": str(e)}
-        try:
-            r = await client.get(f"{OLLAMA_URL}/api/tags")
-            models = [m["name"] for m in r.json().get("models", [])]
-            checks["ollama"] = {"ok": OLLAMA_MODEL in models, "url": OLLAMA_URL, "model": OLLAMA_MODEL,
-                                "detail": "model available" if OLLAMA_MODEL in models else f"model missing; have {models}"}
-        except Exception as e:  # noqa: BLE001
-            checks["ollama"] = {"ok": False, "url": OLLAMA_URL, "model": OLLAMA_MODEL, "detail": str(e)}
+        # The model. Reported from the key pool's own state rather than by calling Gemini: a probe
+        # on every console poll would spend the very quota this is reporting on. Healthy while at
+        # least one key can take a call now. This is the backend's pool; the RCA agent's process
+        # keeps its own and detects a limited key there separately.
+        ks = llm_keys.POOL.status()
+        if not ks["keys"]:
+            detail = "no Gemini API key configured: set GEMINI_API_KEY_1.. in backend/.env"
+        else:
+            detail = f"{ks['ready']} of {ks['keys']} Gemini keys ready, using {ks['current']}"
+            if ks["cooling_s"]:
+                detail += "; cooling: " + ", ".join(f"{k} {v}s" for k, v in ks["cooling_s"].items())
+            if ks["invalid"]:
+                detail += "; rejected: " + ", ".join(ks["invalid"])
+        checks["llm"] = {"ok": ks["ready"] > 0, "model": LLM_MODEL, "detail": detail}
         # The evidence tools are reached over MCP. A dead tools server does not stop an
         # investigation - it falls back to direct calls and records that on the incident - but the
         # system is then not running the way it is meant to, so this does count against overall
