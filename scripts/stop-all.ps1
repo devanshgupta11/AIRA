@@ -5,6 +5,11 @@
 #>
 . "$PSScriptRoot\common.ps1"
 
+# First, or it would restart each thing below as soon as it was stopped.
+Write-Step "Watchdog"
+$n = Stop-Watchdog
+if ($n -gt 0) { Write-Ok "stopped the watchdog ($n process(es))" } else { Write-Info 'watchdog was not running' }
+
 Write-Step "AIRA backend"
 $procs = Get-BackendProcess
 if ($procs) {

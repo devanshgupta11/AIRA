@@ -15,6 +15,16 @@ if (Test-DockerEngine) {
     $bad | ForEach-Object { Write-Warn2 ($_ -replace '\|', ' : '); $problems++ }
 } else { Write-Fail 'Docker engine not running'; $problems++ }
 
+Write-Step "Watchdog"
+$wd = Get-WatchdogProcess
+if ($wd) { Write-Ok "running (pid $(@($wd)[0].ProcessId)), restarting whatever stops answering" }
+else { Write-Warn2 'not running - nothing will restart a part that stops. Start it with .\start-all.ps1'; $problems++ }
+$wdLog = Join-Path $LogDir 'watchdog.log'
+if (Test-Path $wdLog) {
+    $recent = Get-Content $wdLog -Tail 200 | Where-Object { $_ -match ' (FIX|ERROR|WARN) ' } | Select-Object -Last 5
+    if ($recent) { Write-Info 'latest repairs and warnings:'; $recent | ForEach-Object { Write-Info "  $_" } }
+}
+
 Write-Step "Endpoints"
 $checks = [ordered]@{
     'Astronomy Shop :8080'  = 'http://localhost:8080/'

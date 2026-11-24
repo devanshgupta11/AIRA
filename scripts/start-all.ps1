@@ -7,6 +7,10 @@
 $total = [Diagnostics.Stopwatch]::StartNew()
 $failed = $false
 
+# Paused while this script works, so the two never start the same process at once. Started again
+# at the end, whatever happened here: if something failed to start, the watchdog keeps retrying it.
+if ((Stop-Watchdog) -gt 0) { Write-Info 'watchdog paused while starting' }
+
 Write-Step "Docker engine"
 if (-not (Test-DockerEngine)) {
     $dd = 'C:\Program Files\Docker\Docker\Docker Desktop.exe'
@@ -45,10 +49,7 @@ if ($bad) { $bad | ForEach-Object { Write-Warn2 "container: $_" }; $failed = $tr
 
 Write-Step "Ollama (models in $OllamaModels)"
 if (-not (Test-Http 'http://localhost:11434/api/version')) {
-    $env:OLLAMA_MODELS = $OllamaModels
-    $env:OLLAMA_KEEP_ALIVE = '60m'
-    Start-Process -FilePath $OllamaExe -ArgumentList 'serve' -WindowStyle Hidden `
-        -RedirectStandardOutput (Join-Path $LogDir 'ollama.out.log') -RedirectStandardError (Join-Path $LogDir 'ollama.log')
+    Start-OllamaServer
     if (-not (Wait-Until { Test-Http 'http://localhost:11434/api/version' } 60 'Ollama server up on :11434')) { $failed = $true }
 } else { Write-Ok 'Ollama server already running on :11434' }
 
@@ -64,9 +65,7 @@ try {
 
 Write-Step "RCA agent over A2A (ADK on :8001)"
 if (-not (Get-RcaProcess)) {
-    Start-Process -FilePath $VenvPython -ArgumentList '-m', 'uvicorn', 'app.agents.rca_server:app', '--host', '127.0.0.1', '--port', '8001' `
-        -WorkingDirectory $BackendDir -WindowStyle Hidden `
-        -RedirectStandardOutput (Join-Path $LogDir 'rca.out.log') -RedirectStandardError (Join-Path $LogDir 'rca.err.log')
+    Start-RcaAgent
 } else { Write-Info 'RCA agent process already running' }
 if (Wait-Until { Test-Http 'http://127.0.0.1:8001/.well-known/agent-card.json' } 90 'RCA agent card served on :8001') {
     $card = Invoke-RestMethod 'http://127.0.0.1:8001/.well-known/agent-card.json'
@@ -87,9 +86,7 @@ if (Wait-Until { Test-Http 'http://127.0.0.1:8001/.well-known/agent-card.json' }
 
 Write-Step "Evidence tools over MCP (:8002)"
 if (-not (Get-McpToolsProcess)) {
-    Start-Process -FilePath $VenvPython -ArgumentList '-m', 'uvicorn', 'app.mcp_servers.tools_server:app', '--host', '127.0.0.1', '--port', '8002' `
-        -WorkingDirectory $BackendDir -WindowStyle Hidden `
-        -RedirectStandardOutput (Join-Path $LogDir 'mcp-tools.out.log') -RedirectStandardError (Join-Path $LogDir 'mcp-tools.err.log')
+    Start-McpTools
 } else { Write-Info 'MCP tools server already running' }
 # The port starts listening before the MCP session manager can complete a handshake, so waiting
 # for the port and then asking once reported "advertises no tools" on a cold start while the
@@ -103,9 +100,7 @@ if (Wait-Until { Get-NetTCPConnection -LocalPort 8002 -State Listen -ErrorAction
 
 Write-Step "AIRA backend (FastAPI on :8000)"
 if (-not (Get-BackendProcess)) {
-    Start-Process -FilePath $VenvPython -ArgumentList '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8000' `
-        -WorkingDirectory $BackendDir -WindowStyle Hidden `
-        -RedirectStandardOutput (Join-Path $LogDir 'uvicorn.out.log') -RedirectStandardError (Join-Path $LogDir 'uvicorn.err.log')
+    Start-Backend
 } else { Write-Info 'backend process already running' }
 if (Wait-Until { Test-Http 'http://localhost:8000/health' } 90 'backend /health responds') {
     $h = Invoke-RestMethod 'http://localhost:8000/health'
@@ -117,6 +112,12 @@ if (Wait-Until { Test-Http 'http://localhost:8000/health' } 90 'backend /health 
 Write-Step "Webhook path (Alertmanager container -> host.docker.internal:8000)"
 $probe = docker exec alertmanager wget -qO- -T 5 http://host.docker.internal:8000/health 2>&1
 if ("$probe" -match '"ok"') { Write-Ok 'Alertmanager can reach the AIRA backend' } else { Write-Fail "Alertmanager cannot reach the backend: $probe"; $failed = $true }
+
+Write-Step "Watchdog (keeps every part reachable; log: logs\watchdog.log)"
+Start-Watchdog
+if (Wait-Until { [bool](Get-WatchdogProcess) } 20 'watchdog running in the background') {
+    Write-Info 'it checks every 15s and restarts whatever stops answering; stop-all.ps1 stops it first'
+} else { $failed = $true }
 
 Write-Step ("URLs (total start time {0:N0}s)" -f $total.Elapsed.TotalSeconds)
 $Urls.GetEnumerator() | ForEach-Object { Write-Host ("  {0,-18} {1}" -f $_.Key, $_.Value) }

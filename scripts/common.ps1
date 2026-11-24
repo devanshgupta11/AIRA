@@ -114,6 +114,57 @@ function Get-McpToolsProcess {
         Where-Object { $_.CommandLine -like '*uvicorn*app.mcp_servers.tools_server:app*' }
 }
 
+# ---------------------------------------------------------------- starting each AIRA process
+#
+# One definition per process, used by start-all.ps1 and by watchdog.ps1, so a restart after a crash
+# is exactly the same as the first start: same command, same port, same log files.
+
+function Start-RcaAgent {
+    Start-Process -FilePath $VenvPython -ArgumentList '-m', 'uvicorn', 'app.agents.rca_server:app', '--host', '127.0.0.1', '--port', '8001' `
+        -WorkingDirectory $BackendDir -WindowStyle Hidden `
+        -RedirectStandardOutput (Join-Path $LogDir 'rca.out.log') -RedirectStandardError (Join-Path $LogDir 'rca.err.log')
+}
+
+function Start-McpTools {
+    Start-Process -FilePath $VenvPython -ArgumentList '-m', 'uvicorn', 'app.mcp_servers.tools_server:app', '--host', '127.0.0.1', '--port', '8002' `
+        -WorkingDirectory $BackendDir -WindowStyle Hidden `
+        -RedirectStandardOutput (Join-Path $LogDir 'mcp-tools.out.log') -RedirectStandardError (Join-Path $LogDir 'mcp-tools.err.log')
+}
+
+function Start-Backend {
+    Start-Process -FilePath $VenvPython -ArgumentList '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8000' `
+        -WorkingDirectory $BackendDir -WindowStyle Hidden `
+        -RedirectStandardOutput (Join-Path $LogDir 'uvicorn.out.log') -RedirectStandardError (Join-Path $LogDir 'uvicorn.err.log')
+}
+
+function Start-OllamaServer {
+    $env:OLLAMA_MODELS = $OllamaModels
+    $env:OLLAMA_KEEP_ALIVE = '60m'
+    Start-Process -FilePath $OllamaExe -ArgumentList 'serve' -WindowStyle Hidden `
+        -RedirectStandardOutput (Join-Path $LogDir 'ollama.out.log') -RedirectStandardError (Join-Path $LogDir 'ollama.log')
+}
+
+# ---------------------------------------------------------------- the watchdog
+#
+# watchdog.ps1 runs hidden in its own PowerShell process. It is found by its command line, the same
+# way the Python processes are.
+function Get-WatchdogProcess {
+    Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" |
+        Where-Object { $_.CommandLine -like '*watchdog.ps1*' -and $_.ProcessId -ne $PID }
+}
+
+function Start-Watchdog {
+    Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList `
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$(Join-Path $PSScriptRoot 'watchdog.ps1')`""
+}
+
+# Stopped before anything else is stopped or started, or it would restart what stop-all just stopped.
+function Stop-Watchdog {
+    $w = Get-WatchdogProcess
+    $w | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    return @($w).Count
+}
+
 # MCP has no plain GET health endpoint - the protocol needs an initialize handshake - so health is
 # asked through the client, which also proves the tools are actually advertised. The query lives in
 # scripts\mcp_tools_list.py rather than inline: PowerShell strips the quotes when passing code to
