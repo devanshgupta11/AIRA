@@ -37,6 +37,7 @@ os.environ.setdefault("ADK_SUPPRESS_GEMINI_LITELLM_WARNINGS", "true")
 
 from google.adk.agents import Agent                     # noqa: E402
 from google.adk.models.lite_llm import LiteLlm          # noqa: E402
+from google.adk.models.llm_response import LlmResponse  # noqa: E402
 from google.adk.runners import Runner                   # noqa: E402
 from google.adk.sessions import InMemorySessionService  # noqa: E402
 from google.genai import types                          # noqa: E402
@@ -45,6 +46,10 @@ T = TypeVar("T", bound=BaseModel)
 
 APP_NAME = "aira"
 USER_ID = "aira"
+
+class ModelCallFailed(RuntimeError):
+    """The model call itself failed (quota, outage or rejected key)."""
+
 
 _agents: dict[str, Agent] = {}
 _runners: dict[str, Runner] = {}
@@ -82,7 +87,14 @@ class _FailoverLiteLlm(LiteLlm):
                                      ) -> AsyncGenerator:
         deadline = time.monotonic() + llm_keys.MAX_WAIT_S
         while True:
-            idx, key = await llm_keys.POOL.acquire_async(deadline)
+            # A failure is returned to ADK as an error response, not raised. ADK turns a raised
+            # exception into a text reply, so the message used to arrive as if the model had
+            # written it, and the parser then reported "no JSON object found".
+            try:
+                idx, key = await llm_keys.POOL.acquire_async(deadline)
+            except llm_keys.NoKeyAvailable as e:
+                yield LlmResponse(error_code="NO_KEY_AVAILABLE", error_message=str(e)[:500])
+                return
             attempt = self.model_copy()
             attempt._additional_args = {**self._additional_args, "api_key": key}
             yielded = False
@@ -91,11 +103,15 @@ class _FailoverLiteLlm(LiteLlm):
                     yielded = True
                     yield response
                 return
-            except Exception as e:  # noqa: BLE001 - re-raised unless it is the key's fault
+            except Exception as e:  # noqa: BLE001 - reported to ADK unless it is a key problem
                 kind = llm_keys.classify(e)
-                if kind is None or yielded:
+                if kind is not None and not yielded:
+                    llm_keys.POOL.report(idx, kind, e)
+                    continue
+                if yielded:
                     raise
-                llm_keys.POOL.report(idx, kind, e)
+                yield LlmResponse(error_code=type(e).__name__, error_message=str(e)[:500])
+                return
 
 
 def make_adk_agent(name: str, instruction: str) -> Agent:
@@ -150,6 +166,7 @@ async def _ask(agent: Agent, prompt: str) -> str:
         # exactly the text sent over A2A; the remote agent adds its own instruction on top.
         events.record("a2a", "a2a_request_sent",
                       detail={"model": config.LLM_MODEL, "to": agent.name,
+                              "prompt_fingerprint": events.prompt_fingerprint(prompt),
                               "prompt": events.clip(prompt, events.MAX_PROMPT)})
     runner = _runner(agent)
     session = await runner.session_service.create_session(app_name=APP_NAME, user_id=USER_ID)
@@ -164,13 +181,20 @@ async def _ask(agent: Agent, prompt: str) -> str:
         return bool(callable(fn) and fn())
 
     replies: list[tuple[str, bool]] = []
+    errors: list[str] = []
     async for event in runner.run_async(
         user_id=USER_ID, session_id=session.id, new_message=message
     ):
         text = _text(event)
         if text:
             replies.append((text, _is_final(event)))
-    return pick_answer(replies)
+        if getattr(event, "error_message", None):
+            errors.append(f"{getattr(event, 'error_code', None) or 'error'}: {event.error_message}")
+    answer = pick_answer(replies)
+    if not answer and errors:
+        # The model call failed. Say so, with the reason, instead of returning nothing to parse.
+        raise ModelCallFailed(errors[-1])
+    return answer
 
 
 RCA_A2A_CARD = os.getenv(

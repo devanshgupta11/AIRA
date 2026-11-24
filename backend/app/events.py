@@ -26,11 +26,14 @@ stored rather than being attributed to the wrong incident or inventing one.
 
 import contextlib
 import contextvars
+import hashlib
 import json
 import logging
+import threading
 import time
+from datetime import datetime, timezone
 
-from . import db, tracing
+from . import config, db, tracing
 
 log = logging.getLogger("aira.events")
 
@@ -265,6 +268,35 @@ def wire_crewai() -> bool:
 
 # ---------------------------------------------------------------- ADK's per-agent callbacks
 
+def prompt_fingerprint(prompt: str) -> str:
+    """A short, stable identifier for a prompt text, computed the same way in both processes."""
+    return hashlib.sha256((prompt or "").encode("utf-8")).hexdigest()[:16]
+
+
+# Token usage for the RCA agent's model calls. That call happens in a separate process with no
+# incident identifier, so each call is written here with the fingerprint of its prompt. The backend
+# records the same fingerprint when it sends the request, and the evaluation export joins the two.
+USAGE_FILE = config.LOG_DIR / "usage" / "adk-usage.jsonl"
+_usage_lock = threading.Lock()
+
+
+def record_usage_line(source: str, fingerprint: str | None, model: str | None, usage) -> None:
+    """Append one usage line. Never raises: accounting must not fail an investigation."""
+    try:
+        if usage is None or fingerprint is None:
+            return
+        line = {"at": datetime.now(timezone.utc).isoformat(), "source": source,
+                "prompt_fingerprint": fingerprint, "model": model,
+                "prompt_tokens": getattr(usage, "prompt_token_count", None),
+                "completion_tokens": getattr(usage, "candidates_token_count", None),
+                "total_tokens": getattr(usage, "total_token_count", None)}
+        USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with _usage_lock, USAGE_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(line) + "\n")
+    except Exception:  # noqa: BLE001
+        log.debug("could not write usage line", exc_info=True)
+
+
 def adk_callbacks() -> dict:
     """ADK callback keyword arguments, to pass to `Agent(...)`.
 
@@ -272,7 +304,7 @@ def adk_callbacks() -> dict:
     a response. The tool callbacks are deliberately absent: the RCA agent has no tools, so
     registering them would advertise a hook that can never fire.
     """
-    started: dict[int, float] = {}
+    started: dict[int, tuple[float, str]] = {}
 
     def before_model(ctx, request):
         try:
@@ -281,22 +313,25 @@ def adk_callbacks() -> dict:
                 for part in (getattr(content, "parts", None) or []):
                     if getattr(part, "text", None):
                         parts.append(part.text)
-            started[id(ctx)] = time.perf_counter()
+            prompt = "\n".join(parts)
+            started[id(ctx)] = (time.perf_counter(), prompt_fingerprint(prompt))
             record("adk", "model_call_started",
                    detail={"model": str(getattr(request, "model", None)),
-                           "prompt": clip("\n".join(parts), MAX_PROMPT)})
+                           "prompt": clip(prompt, MAX_PROMPT)})
         except Exception:  # noqa: BLE001
             log.debug("adk before_model callback failed", exc_info=True)
         return None
 
     def after_model(ctx, response):
         try:
-            t0 = started.pop(id(ctx), None)
+            t0, fingerprint = started.pop(id(ctx), (None, None))
             text = ""
             content = getattr(response, "content", None)
             for part in (getattr(content, "parts", None) or []):
                 if getattr(part, "text", None):
                     text += part.text
+            record_usage_line("adk", fingerprint, getattr(response, "model_version", None),
+                              getattr(response, "usage_metadata", None))
             record("adk", "model_call_completed", ok=True,
                    duration_ms=None if t0 is None else round((time.perf_counter() - t0) * 1000, 1),
                    detail={"response": clip(text)})
