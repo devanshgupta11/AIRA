@@ -304,6 +304,15 @@ def incident(incident_id: int):
     return inc
 
 
+def _already_decided(action_id: int, wanted: str) -> str:
+    """Why a decision lost the race, naming who decided first, for the screen that pressed second."""
+    current = db.get_action(action_id) or {}
+    status, by = current.get("status") or "unknown", current.get("decided_by")
+    verb = "rejected" if wanted == "rejected" else "approved"
+    return (f"this action is already '{status}'" + (f" by {by}" if by else "")
+            + f", so it cannot be {verb}")
+
+
 @app.post("/actions/{action_id}/approve")
 async def approve_action(action_id: int, request: Request):
     """Approve a proposed action and execute it.
@@ -322,17 +331,21 @@ async def approve_action(action_id: int, request: Request):
     if action["status"] != "proposed":
         # Not an error worth a 500, but it must not run twice. An action already executed, rejected
         # or refused is final.
-        raise HTTPException(409, f"this action is '{action['status']}', so it cannot be approved")
+        raise HTTPException(409, _already_decided(action_id, "approved"))
 
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001 - an empty body is normal from a button
         body = {}
-    who = str(body.get("by") or "human (console)")[:80]
+    who = str(body.get("by") or "developer (console)")[:80]
     note = str(body.get("note") or "")[:400]
 
-    db.update_action(action_id, status="approved", decided_by=who, decided_at=db.now_iso(),
-                     decision_note=note)
+    # The check above is only a fast answer. This is the real gate: one atomic update that succeeds
+    # only while the action is still 'proposed', so when the console and the app approve at the
+    # same moment exactly one of them runs it.
+    if not db.claim_action(action_id, status="approved", decided_by=who, decided_at=db.now_iso(),
+                           decision_note=note):
+        raise HTTPException(409, _already_decided(action_id, "approved"))
     with events.investigating(action["incident_id"], "remediation", action["attempt"]):
         events.record("aira", "action_approved",
                       detail={"action": action["action"], "target": action["target_service"],
@@ -388,11 +401,12 @@ async def approve_action(action_id: int, request: Request):
     superseded = 0
     for other in db.get_actions_pending_like(action["action"], action["target_service"],
                                              exclude_id=action_id):
-        db.update_action(other["id"], status="superseded", decided_at=db.now_iso(),
-                         decided_by="AIRA (automatic)",
-                         decision_note=(f"action {action_id} on incident "
-                                        f"{action['incident_id']} already did this"))
-        superseded += 1
+        # Conditional, so a proposal a person decided on in the meantime keeps their decision.
+        if db.claim_action(other["id"], status="superseded", decided_at=db.now_iso(),
+                           decided_by="AIRA (automatic)",
+                           decision_note=(f"action {action_id} on incident "
+                                          f"{action['incident_id']} already did this")):
+            superseded += 1
     if superseded:
         log.info("incident %s: action %s also superseded %d pending proposal(s) for the same remedy",
                  action["incident_id"], action_id, superseded)
@@ -431,16 +445,18 @@ async def reject_action(action_id: int, request: Request, background: Background
     if not action:
         raise HTTPException(404, "no such action")
     if action["status"] != "proposed":
-        raise HTTPException(409, f"this action is '{action['status']}', so it cannot be rejected")
+        raise HTTPException(409, _already_decided(action_id, "rejected"))
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
         body = {}
-    who = str(body.get("by") or "human (console)")[:80]
+    who = str(body.get("by") or "developer (console)")[:80]
     note = str(body.get("note") or "")[:400]
 
-    db.update_action(action_id, status="rejected", decided_by=who, decided_at=db.now_iso(),
-                     decision_note=note)
+    # Same single gate as approval: an Approve and a Reject arriving together cannot both land.
+    if not db.claim_action(action_id, status="rejected", decided_by=who, decided_at=db.now_iso(),
+                           decision_note=note):
+        raise HTTPException(409, _already_decided(action_id, "rejected"))
     with events.investigating(action["incident_id"], "remediation", action["attempt"]):
         events.record("aira", "action_rejected", ok=False,
                       detail={"action": action["action"], "target": action["target_service"],
@@ -933,3 +949,42 @@ def traces_page():
 @app.get("/style.css")
 def stylesheet():
     return FileResponse(STATIC / "style.css", media_type="text/css")
+
+
+# ---------------------------------------------------------------- installable app (PWA)
+#
+# The mobile app is these same pages, installed from the browser - not a second frontend - so it
+# has every feature the portal has and the two cannot drift apart. What installation needs beyond
+# the pages lives in the repository's pwa/ folder and is served read-only from here. If that folder
+# is absent these routes answer 404 and the console works exactly as before.
+
+_PWA_TYPES = {".js": "text/javascript", ".css": "text/css", ".html": "text/html",
+              ".png": "image/png", ".webmanifest": "application/manifest+json"}
+
+
+def _pwa_file(name: str, headers: dict | None = None) -> FileResponse:
+    root = config.PWA_DIR.resolve()
+    path = (root / name).resolve()
+    # Only files inside pwa/, and only the kinds listed above: no path can climb out of the folder.
+    if root not in path.parents or not path.is_file() or path.suffix not in _PWA_TYPES:
+        raise HTTPException(404, "not found")
+    # no-cache means "check with the server first", so an updated app file reaches phones on the
+    # next load instead of whenever a cache happens to expire.
+    return FileResponse(path, media_type=_PWA_TYPES[path.suffix],
+                        headers={"Cache-Control": "no-cache", **(headers or {})})
+
+
+@app.get("/manifest.webmanifest")
+def pwa_manifest():
+    return _pwa_file("manifest.webmanifest")
+
+
+@app.get("/sw.js")
+def pwa_service_worker():
+    # Served from the root so it may control every page (/, /metrics, /traces).
+    return _pwa_file("sw.js", {"Service-Worker-Allowed": "/"})
+
+
+@app.get("/pwa/{name:path}")
+def pwa_asset(name: str):
+    return _pwa_file(name)

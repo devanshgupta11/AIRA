@@ -26,6 +26,11 @@ DATA_DIR = Path(os.getenv("AIRA_DATA_DIR", BACKEND_DIR / "data"))
 DB_PATH = Path(os.getenv("AIRA_DB_PATH", DATA_DIR / "aira.db"))
 LOG_DIR = Path(os.getenv("AIRA_LOG_DIR", BACKEND_DIR.parent / "logs"))
 
+# The installable-app (PWA) files: manifest, service worker, icons, mobile stylesheet. They live in
+# the repository's pwa/ folder; a container sets AIRA_PWA_DIR to wherever it copied them. If the
+# folder is missing the console still works exactly as before, it just cannot be installed.
+PWA_DIR = Path(os.getenv("AIRA_PWA_DIR", BACKEND_DIR.parent / "pwa"))
+
 PROMETHEUS_URL = os.getenv("AIRA_PROMETHEUS_URL", "http://localhost:9090")
 ALERTMANAGER_URL = os.getenv("AIRA_ALERTMANAGER_URL", "http://localhost:9093")
 # The model every agent uses, in both frameworks, through the Gemini API (Google AI Studio keys).

@@ -40,6 +40,10 @@ RUN pip install --no-cache-dir --no-deps -r /app/requirements.txt
 
 COPY backend/app /app/app
 
+# The installable-app (PWA) files: manifest, service worker, icons, phone stylesheet. Served by
+# main.py from AIRA_PWA_DIR; the console works without them, it just cannot be installed.
+COPY pwa /app/pwa
+
 # The data this deployment serves, copied from deploy/seed rather than from the working copies.
 #
 # Three reasons, each of which broke something first. backend/data/aira.db is in .gitignore, so it
@@ -64,6 +68,7 @@ ENV AIRA_MODE=archive \
     AIRA_DB_PATH=/app/data/aira.db \
     AIRA_QDRANT_PATH=/app/qdrant \
     AIRA_LOG_DIR=/app/logs \
+    AIRA_PWA_DIR=/app/pwa \
     PORT=8000
 
 # Qdrant runs embedded and takes an exclusive lock on its directory, so this image must run as a

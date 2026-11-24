@@ -406,6 +406,28 @@ def update_action(action_id: int, **fields) -> None:
                      (*fields.values(), action_id))
 
 
+def claim_action(action_id: int, status: str, **fields) -> bool:
+    """Take an action out of 'proposed', but only if it is still 'proposed'. True if this call won.
+
+    The check and the change are a single UPDATE, so they cannot be separated. The console and the
+    mobile app can both decide on the same proposal, and two people pressing Approve (or one
+    Approve and one Reject) at the same moment used to both pass a read-then-write check, which
+    could run the same action twice. Now exactly one decision lands; every other caller gets
+    False and is told who decided first.
+    """
+    for col in ACTION_JSON_COLUMNS:
+        if col in fields and fields[col] is not None and not isinstance(fields[col], str):
+            fields[col] = json.dumps(fields[col])
+    fields["status"] = status
+    fields["updated_at"] = now_iso()
+    cols = ", ".join(f"{k} = ?" for k in fields)
+    with _lock, connect() as conn:
+        cur = conn.execute(
+            f"UPDATE remediation_actions SET {cols} WHERE id = ? AND status = 'proposed'",
+            (*fields.values(), action_id))
+        return cur.rowcount == 1
+
+
 def _action_row(row) -> dict:
     d = dict(row)
     for col in ACTION_JSON_COLUMNS:
@@ -450,7 +472,8 @@ def close_pending_actions(incident_id: int, reason: str) -> int:
         for r in rows:
             conn.execute(
                 "UPDATE remediation_actions SET status = 'superseded', decided_at = ?, "
-                "decided_by = 'AIRA (automatic)', decision_note = ?, updated_at = ? WHERE id = ?",
+                "decided_by = 'AIRA (automatic)', decision_note = ?, updated_at = ? "
+                "WHERE id = ? AND status = 'proposed'",   # never overwrite a human's decision
                 (now_iso(), reason, now_iso(), r["id"]))
     return len(rows)
 

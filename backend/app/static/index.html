@@ -306,6 +306,17 @@
 
   footer { display: none; }
 </style>
+<!-- Installable app (PWA) and phone layout. Additive only: see /pwa/pwa.css and /pwa/pwa.js. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#10161D">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="AIRA">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="icon" type="image/png" href="/pwa/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/pwa/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="/pwa/pwa.css">
+<script src="/pwa/pwa.js" defer></script>
 </head>
 <body>
 <nav class="nav">
@@ -1284,6 +1295,12 @@ function paint() {
 /* The only call this console makes that changes the running system. Both buttons are disabled
    the moment one is pressed: an approval that ran twice because of a double click would be a
    second, unapproved action. */
+/* Who is recorded against an approval or rejection: the installed app or the web console. */
+function decider() {
+  const app = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  return app ? "developer (app)" : "developer (console)";
+}
+
 async function decide(actionId, what, button) {
   const section = button.closest(".act");
   section.querySelectorAll("button").forEach(b => { b.disabled = true; });
@@ -1293,12 +1310,14 @@ async function decide(actionId, what, button) {
     const r = await fetch(`/actions/${actionId}/${what}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ by: "human (console)" }),
+      body: JSON.stringify({ by: decider() }),
     });
     const body = await r.json().catch(() => ({}));
     if (!r.ok) {
       if (note) note.textContent = "could not " + what + ": " + (body.detail || r.status);
-      section.querySelectorAll("button").forEach(b => { b.disabled = false; });
+      // 409: someone on the other side (console or app) decided first. The buttons stay disabled -
+      // there is nothing left to decide - and the next refresh shows who did it and what happened.
+      if (r.status !== 409) section.querySelectorAll("button").forEach(b => { b.disabled = false; });
       return;
     }
   } catch (e) {

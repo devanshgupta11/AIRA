@@ -21,6 +21,17 @@
   }
   .links a:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
 </style>
+<!-- Installable app (PWA) and phone layout. Additive only: see /pwa/pwa.css and /pwa/pwa.js. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#10161D">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="AIRA">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="icon" type="image/png" href="/pwa/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/pwa/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="/pwa/pwa.css">
+<script src="/pwa/pwa.js" defer></script>
 </head>
 <body>
 <nav class="nav">

@@ -1,0 +1,91 @@
+/* AIRA - phone and tablet layout, loaded after each page's own styles.
+ *
+ * Additive only. Every rule here is either inside a small-screen / touch media query, or targets
+ * classes and elements that pwa.js adds (body.m-on, .m-bar, .pwa-install). At desktop widths with
+ * a mouse nothing in this file applies, so the web portal looks and behaves exactly as before.
+ */
+
+/* ---------------------------------------------------------------- install button (pwa.js shows it) */
+.pwa-install[hidden] { display: none; }
+
+/* ---------------------------------------------------------------- console: list <-> detail on phones
+ *
+ * At 900px and below the console's own stylesheet hides the incident list and the right rail, which
+ * leaves no way to switch incidents on a phone. pwa.js turns that into two screens: the incident
+ * list, and an incident's detail with the rail's content moved underneath it. body.m-on is only set
+ * while the screen is that narrow.
+ */
+.m-bar { display: none; }
+
+body.m-on main { grid-template-columns: 1fr; }
+body.m-on.m-list aside { display: block; }
+body.m-on.m-list article { display: none; }
+body.m-on.m-detail aside { display: none; }
+body.m-on.m-detail article { display: block; }
+
+body.m-on .m-bar {
+  display: flex; align-items: center; gap: 10px;
+  position: sticky; top: 0; z-index: 5;
+  padding: 6px 10px; background: var(--nav); border-bottom: 1px solid var(--line);
+}
+.m-back {
+  font: inherit; font-size: 14px; font-weight: 600; color: var(--accent);
+  background: none; border: 0; border-radius: var(--radius-s);
+  padding: 8px 8px; min-height: 40px; cursor: pointer;
+}
+.m-back:hover { background: var(--panel-2); }
+.m-wait {
+  margin-left: auto; font: inherit; font-size: 11px; font-weight: 650; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--amber); background: var(--amber-bg);
+  border: 0; border-radius: 999px; padding: 7px 11px; min-height: 32px; cursor: pointer;
+}
+.m-wait[hidden] { display: none; }
+
+/* The right rail's content (failing operations, alert labels, links), shown under the detail. */
+body.m-on article .side {
+  display: block; border-left: 0; border-top: 1px solid var(--line);
+  background: var(--nav); overflow: visible;
+}
+body.m-on article .side-in { padding: 20px 16px 48px; }
+
+body.m-on .row { padding: 14px 16px; }
+
+/* Mobile browsers count the address bar inside 100vh, which pushed the bottom of the console off
+   screen. dvh is the visible height; on desktop it equals vh. */
+@supports (height: 100dvh) {
+  body.m-on { height: 100dvh; }
+}
+
+/* ---------------------------------------------------------------- every page: narrow screens */
+@media (max-width: 760px) {
+  /* Wide tables scroll sideways inside their card instead of widening the page. */
+  table.data, .pm-body table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.data { white-space: nowrap; }
+  .pm-body { padding: 4px 14px 16px; }
+  .pm-h { padding: 12px 14px; }
+  .page-head h1 { font-size: 19px; }
+}
+
+/* Phones: the top bar becomes two rows - brand and controls, then the page tabs full width -
+   instead of overflowing off the right edge. */
+@media (max-width: 600px) {
+  .nav { height: auto; min-height: var(--nav-h); flex-wrap: wrap; gap: 0 10px; padding: 0 10px; }
+  .nav .brand { order: 1; min-height: var(--nav-h); align-items: center; }
+  .nav .nav-right { order: 2; min-height: var(--nav-h); gap: 8px; }
+  .nav .tabs { order: 3; flex-basis: 100%; padding-bottom: 8px; }
+  .nav .tab { flex: 1; text-align: center; padding: 8px 6px; }
+  .nav #tick { font-size: 11px; white-space: nowrap; }
+  .nav .seg button { padding-left: 8px; padding-right: 8px; }
+  /* The health popover sits under the taller two-row bar. */
+  .health-pop { top: calc(var(--nav-h) + 50px); }
+  h1.inc { font-size: 20px; }
+  h1.inc .alert { display: block; margin: 4px 0 0; font-size: 13.5px; }
+}
+
+/* ---------------------------------------------------------------- touch screens: finger-sized targets */
+@media (pointer: coarse) {
+  .btn { min-height: 42px; }
+  .icon-btn, .health-sum, .tracebtn { min-height: 36px; }
+  .seg button { min-height: 36px; }
+  .peek > summary { padding: 6px 0; }
+}
