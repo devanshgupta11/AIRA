@@ -56,5 +56,20 @@ ARCHIVE = MODE == "archive"
 # Seconds the agent may take before the incident is marked as an error.
 AGENT_TIMEOUT_S = float(os.getenv("AIRA_AGENT_TIMEOUT_S", "180"))
 
+# ---------------------------------------------------------------- mobile app (PWA) and access
+#
+# The installable mobile app lives in the repository's pwa/ folder and is served at /app/.
+PWA_DIR = Path(os.getenv("AIRA_PWA_DIR", BACKEND_DIR.parent / "pwa"))
+
+# By default the backend listens on 127.0.0.1 only (start-all.ps1), so nothing outside this machine
+# can reach it - a phone connects through `adb reverse`, which arrives as a local connection. To
+# serve other devices directly (a phone on the same Wi-Fi, a deployment), the backend must be given
+# an access token: every request from another machine must then carry it, as a header, a cookie
+# set by /api/session, or ?token= on the live stream. Without a token nothing changes.
+ACCESS_TOKEN = os.getenv("AIRA_ACCESS_TOKEN") or None
+# Requests from this machine skip the token. Turn this off when a reverse proxy (Caddy, nginx) on
+# the same machine forwards outside traffic, because then every request looks local.
+TRUST_LOOPBACK = os.getenv("AIRA_TRUST_LOOPBACK", "1").lower() not in ("0", "false", "no")
+
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
