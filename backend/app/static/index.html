@@ -1283,6 +1283,11 @@ function paint() {
 /* The only call this console makes that changes the running system. Both buttons are disabled
    the moment one is pressed: an approval that ran twice because of a double click would be a
    second, unapproved action. */
+function requestId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+}
+
 async function decide(actionId, what, button) {
   const section = button.closest(".act");
   section.querySelectorAll("button").forEach(b => { b.disabled = true; });
@@ -1292,12 +1297,20 @@ async function decide(actionId, what, button) {
     const r = await fetch(`/actions/${actionId}/${what}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ by: "human (console)" }),
+      // source: recorded as "developer (console)"; the mobile app sends "app". incident_id: the
+      // backend refuses a decision aimed at another incident's proposal. request_id: a retry of
+      // this same click is recognised instead of being treated as a second decision.
+      body: JSON.stringify({ source: "console", incident_id: selected,
+                             request_id: requestId(), client_time: new Date().toISOString() }),
     });
     const body = await r.json().catch(() => ({}));
+    if (r.status === 401) { location.href = "/login"; return; }
     if (!r.ok) {
       if (note) note.textContent = "could not " + what + ": " + (body.detail || r.status);
-      section.querySelectorAll("button").forEach(b => { b.disabled = false; });
+      // 409: someone decided first, from this console or the mobile app. There is nothing left to
+      // decide, so the buttons stay disabled; the next refresh shows who it was and what happened.
+      if (r.status !== 409) section.querySelectorAll("button").forEach(b => { b.disabled = false; });
+      if (r.status === 409) setTimeout(refresh, 1500);
       return;
     }
   } catch (e) {
@@ -1443,6 +1456,20 @@ document.addEventListener("keydown", e => {
 refresh(); health();
 setInterval(refresh, 3000);
 setInterval(health, 15000);
+
+/* Live updates. The backend announces which incidents changed the moment it sees the change
+   (live.py), from any source - an agent, this console, the mobile app - and the console then
+   re-reads exactly as its poll does. Nothing is taken from the message itself, so a missed or
+   repeated message cannot put anything wrong on screen; the three-second poll above stays as the
+   fallback for when the stream is down. The browser reconnects the stream by itself. */
+(function liveUpdates() {
+  if (!window.EventSource) return;
+  let queued = null;
+  const soon = () => { if (!queued) queued = setTimeout(() => { queued = null; refresh(); }, 200); };
+  const es = new EventSource("/api/stream");
+  es.addEventListener("change", soon);
+  es.addEventListener("resync", soon);
+})();
 </script>
 </body>
 </html>
