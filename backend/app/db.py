@@ -123,6 +123,17 @@ CREATE TABLE IF NOT EXISTS remediation_actions (
     updated_at      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_actions_incident ON remediation_actions(incident_id, id);
+-- Devices that asked to be told about incidents by Web Push (the mobile app). Holds only what the
+-- push service needs to deliver a message: no account, no identity.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    endpoint    TEXT PRIMARY KEY,
+    p256dh      TEXT NOT NULL,
+    auth        TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    user_agent  TEXT,
+    last_ok_at  TEXT,
+    failures    INTEGER NOT NULL DEFAULT 0
+);
 """
 
 JSON_COLUMNS = ("labels", "annotations", "evidence", "agent_output")
@@ -145,6 +156,10 @@ def connect() -> sqlite3.Connection:
 # to an existing database, so each one is applied with an ALTER that is safe to run every start.
 MIGRATIONS = (
     ("incidents", "trace_id", "TEXT"),
+    # Where a human decision came from ('console' or 'app'), and the id the client gave the
+    # request, so a retried request after a dropped connection is recognised instead of refused.
+    ("remediation_actions", "decision_source", "TEXT"),
+    ("remediation_actions", "decision_request_id", "TEXT"),
 )
 
 
@@ -448,9 +463,31 @@ def close_pending_actions(incident_id: int, reason: str) -> int:
         for r in rows:
             conn.execute(
                 "UPDATE remediation_actions SET status = 'superseded', decided_at = ?, "
-                "decided_by = 'AIRA (automatic)', decision_note = ?, updated_at = ? WHERE id = ?",
+                "decided_by = 'AIRA (automatic)', decision_note = ?, updated_at = ? "
+                "WHERE id = ? AND status = 'proposed'",   # never overwrite a human's decision
                 (now_iso(), reason, now_iso(), r["id"]))
     return len(rows)
+
+
+def claim_action(action_id: int, status: str, **fields) -> bool:
+    """Take an action out of 'proposed', but only if it is still 'proposed'. True if this call won.
+
+    The check and the change are a single UPDATE, so they cannot be separated. The console and the
+    mobile app can both decide on the same proposal; two decisions arriving together used to both
+    pass a read-then-write check, which could run the same action twice. Now exactly one lands and
+    every other caller gets False.
+    """
+    for col in ACTION_JSON_COLUMNS:
+        if col in fields and fields[col] is not None and not isinstance(fields[col], str):
+            fields[col] = json.dumps(fields[col])
+    fields["status"] = status
+    fields["updated_at"] = now_iso()
+    cols = ", ".join(f"{k} = ?" for k in fields)
+    with _lock, connect() as conn:
+        cur = conn.execute(
+            f"UPDATE remediation_actions SET {cols} WHERE id = ? AND status = 'proposed'",
+            (*fields.values(), action_id))
+        return cur.rowcount == 1
 
 
 def get_actions_pending_like(action: str, target_service: str | None,
