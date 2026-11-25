@@ -95,23 +95,26 @@ function Invoke-FlagCtl {
     return $LASTEXITCODE -eq 0
 }
 
+# Matched on the port as well as the module, so a second copy started for testing (another port, a
+# scratch database) is never mistaken for AIRA's own - neither stopped by stop-all nor counted by
+# the watchdog as the backend being up.
 function Get-BackendProcess {
     Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
-        Where-Object { $_.CommandLine -like '*uvicorn*app.main:app*' }
+        Where-Object { $_.CommandLine -like '*uvicorn*app.main:app*' -and $_.CommandLine -match '--port\s+8000(\s|$)' }
 }
 
 # The RCA agent runs as its own process so the backend reaches it over A2A rather than by import -
 # a real protocol boundary, which is the point of exposing it that way.
 function Get-RcaProcess {
     Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
-        Where-Object { $_.CommandLine -like '*uvicorn*app.agents.rca_server:app*' }
+        Where-Object { $_.CommandLine -like '*uvicorn*app.agents.rca_server:app*' -and $_.CommandLine -match '--port\s+8001(\s|$)' }
 }
 
 # Same reasoning for the evidence tools: they are served over MCP, so they are a service with a
 # declared interface rather than a Python import.
 function Get-McpToolsProcess {
     Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
-        Where-Object { $_.CommandLine -like '*uvicorn*app.mcp_servers.tools_server:app*' }
+        Where-Object { $_.CommandLine -like '*uvicorn*app.mcp_servers.tools_server:app*' -and $_.CommandLine -match '--port\s+8002(\s|$)' }
 }
 
 # ---------------------------------------------------------------- starting each AIRA process
@@ -131,8 +134,22 @@ function Start-McpTools {
         -RedirectStandardOutput (Join-Path $LogDir 'mcp-tools.out.log') -RedirectStandardError (Join-Path $LogDir 'mcp-tools.err.log')
 }
 
+# Where the backend listens. 127.0.0.1 (the default) means this machine only; a phone reaches it
+# through `adb reverse tcp:8000 tcp:8000`. To let devices on the network reach it directly, set
+# AIRA_BIND_HOST=0.0.0.0 AND AIRA_ACCESS_TOKEN: without a token that would expose the approval
+# endpoints to the whole network, so the host is refused and localhost is used instead.
+function Get-BackendHost {
+    $h = $env:AIRA_BIND_HOST
+    if (-not $h -or $h -eq '127.0.0.1' -or $h -eq 'localhost') { return '127.0.0.1' }
+    if (-not $env:AIRA_ACCESS_TOKEN) {
+        Write-Warn2 "AIRA_BIND_HOST=$h ignored: set AIRA_ACCESS_TOKEN as well, or the approval endpoints would be open to the network. Listening on 127.0.0.1."
+        return '127.0.0.1'
+    }
+    return $h
+}
+
 function Start-Backend {
-    Start-Process -FilePath $VenvPython -ArgumentList '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8000' `
+    Start-Process -FilePath $VenvPython -ArgumentList '-m', 'uvicorn', 'app.main:app', '--host', (Get-BackendHost), '--port', '8000' `
         -WorkingDirectory $BackendDir -WindowStyle Hidden `
         -RedirectStandardOutput (Join-Path $LogDir 'uvicorn.out.log') -RedirectStandardError (Join-Path $LogDir 'uvicorn.err.log')
 }
