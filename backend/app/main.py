@@ -1,6 +1,7 @@
 """AIRA backend: receives Alertmanager webhooks, stores incidents, gathers live evidence."""
 
 import asyncio
+import hmac
 import json
 import logging
 import time
@@ -9,10 +10,12 @@ from pathlib import Path
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, Response,
+                               StreamingResponse)
 
-from . import (config, db, events, guardrails, http_util, mcp_client, memory,  # noqa: E501
-               postmortem, postmortem_pdf, prometheus_tool, remediation, tracing, triage_agent)
+from . import (appdata, config, db, events, guardrails, http_util, live, mcp_client,  # noqa: E501
+               memory, postmortem, postmortem_pdf, prometheus_tool, remediation, tracing,
+               triage_agent)
 # CrewAI, ADK and litellm together cost roughly 300 MB of resident memory, and an archive
 # deployment never calls any of them: there is no stack to investigate, so the webhook is closed
 # and the RCA agent is not part of the deployment. Importing them anyway would put a read-only
@@ -61,7 +64,10 @@ async def lifespan(_app: FastAPI):
     orphaned = db.close_orphaned_findings(skip_ids=tuple(unfinished))
     if orphaned:
         log.info("closed %d agent row(s) left running by a previous backend stop", orphaned)
+    # Live updates for the console and the mobile app: a database watcher, never a second store.
+    live.start()
     yield
+    live.stop()
     for t in tasks:
         t.cancel()
     # Flush whatever spans are still buffered, so the last investigation before a restart is not
@@ -70,6 +76,91 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="AIRA backend (mid-semester preview)", lifespan=lifespan)
+
+
+# ---------------------------------------------------------------- access control
+#
+# Off unless AIRA_ACCESS_TOKEN is set (see config.py). The default deployment listens on 127.0.0.1
+# only, so there is nobody else to keep out. Once the backend is reachable from other machines,
+# every request from them must carry the token, except:
+#   /alerts      Alertmanager's webhook, which arrives from the Docker network; it is already the
+#                one validated way in (guardrails.py), and gating it would stop incidents arriving.
+#   /health      so monitoring and the app can tell "unreachable" from "not signed in".
+#   the app shell and its icons, which contain no data, so a phone can load the sign-in screen.
+_OPEN_PATHS = {"/alerts", "/health", "/login", "/api/session", "/manifest.webmanifest",
+               "/style.css", "/favicon.ico"}
+_OPEN_PREFIXES = ("/app/",)
+
+
+def _token_ok(request: Request) -> bool:
+    supplied = (request.headers.get("x-aira-token") or request.cookies.get("aira_token")
+                or request.query_params.get("token") or "")
+    return bool(supplied) and hmac.compare_digest(supplied.encode(), config.ACCESS_TOKEN.encode())
+
+
+@app.middleware("http")
+async def access_guard(request: Request, call_next):
+    if not config.ACCESS_TOKEN:
+        return await call_next(request)
+    client = request.client.host if request.client else ""
+    path = request.url.path
+    if ((config.TRUST_LOOPBACK and client in ("127.0.0.1", "::1"))
+            or path in _OPEN_PATHS or path == "/app" or path.startswith(_OPEN_PREFIXES)
+            or _token_ok(request)):
+        return await call_next(request)
+    if "text/html" in request.headers.get("accept", "") and request.method == "GET":
+        return HTMLResponse(_LOGIN_PAGE, status_code=401)
+    return JSONResponse({"detail": "an access token is required from this address",
+                         "auth_required": True}, status_code=401)
+
+
+_LOGIN_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in · AIRA</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0B0F14;color:#F3F6FA;
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}form{width:min(360px,90vw)}
+h1{font-size:20px;margin:0 0 6px}p{color:#9AA8B8;font-size:14px;margin:0 0 18px}
+input{width:100%;box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid #3A4859;
+background:#151D27;color:#F3F6FA;font-size:15px}button{margin-top:12px;width:100%;padding:12px;
+border:0;border-radius:8px;background:#42D6C5;color:#06231F;font-weight:650;font-size:15px}
+.e{color:#F87171;font-size:13px;min-height:18px;margin-top:8px}</style></head><body>
+<form id="f"><h1>AIRA</h1><p>This AIRA backend needs its access token from this address.</p>
+<input id="t" type="password" autocomplete="current-password" placeholder="Access token" required>
+<button>Sign in</button><div class="e" id="e"></div></form>
+<script>document.getElementById("f").onsubmit=async e=>{e.preventDefault();
+const r=await fetch("/api/session",{method:"POST",headers:{"Content-Type":"application/json"},
+body:JSON.stringify({token:document.getElementById("t").value})});
+if(r.ok)location.reload();else document.getElementById("e").textContent="That token was not accepted.";};
+</script></body></html>"""
+
+
+@app.get("/login")
+def login_page():
+    return HTMLResponse(_LOGIN_PAGE)
+
+
+@app.post("/api/session")
+async def open_session(request: Request):
+    """Exchange the access token for a cookie, so the console and the app can sign in once."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    if not config.ACCESS_TOKEN:
+        return {"ok": True, "auth_required": False}
+    token = str(body.get("token") or "")
+    if not token or not hmac.compare_digest(token.encode(), config.ACCESS_TOKEN.encode()):
+        raise HTTPException(401, "that token was not accepted")
+    resp = JSONResponse({"ok": True, "auth_required": True})
+    resp.set_cookie("aira_token", token, max_age=30 * 24 * 3600, httponly=True, samesite="strict",
+                    secure=request.url.scheme == "https", path="/")
+    return resp
+
+
+@app.delete("/api/session")
+def close_session():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie("aira_token", path="/")
+    return resp
 
 
 # One agent run at a time: the local model serves requests sequentially anyway, and this keeps
@@ -257,14 +348,63 @@ def incidents(limit: int = 100):
 
 
 @app.get("/incidents/{incident_id}")
-def incident(incident_id: int):
+def incident(incident_id: int, include_events: bool = True):
+    """One incident with its findings, actions and (by default) its full execution trace.
+
+    include_events=false leaves the trace out: it carries every prompt and response and can run to
+    megabytes, which the mobile app fetches separately, only when the trace is opened.
+    """
     inc = db.get(incident_id)
     if not inc:
         raise HTTPException(404, "incident not found")
     inc["findings"] = db.get_findings(incident_id)
-    inc["events"] = db.get_events(incident_id)
+    if include_events:
+        inc["events"] = db.get_events(incident_id)
+    else:
+        inc["event_count"] = db.event_counts([incident_id]).get(incident_id, 0)
     inc["actions"] = db.get_actions(incident_id)
     return inc
+
+
+# Who a decision is recorded against, by where it was made. There are no user accounts in AIRA, so
+# the source is the identity; the label is what both the console and the app display.
+DECISION_SOURCES = {"app": "developer (app)", "console": "developer (console)"}
+
+
+def _decision_request(body: dict, action: dict) -> dict:
+    """Validate what a client sent with an approval or rejection."""
+    source = str(body.get("source") or "").strip().lower() or None
+    if source is not None and source not in DECISION_SOURCES:
+        raise HTTPException(422, "source must be 'app' or 'console'")
+    incident_id = body.get("incident_id")
+    if incident_id is not None and str(incident_id) != str(action["incident_id"]):
+        # A stale screen must not decide on the wrong incident's proposal.
+        raise HTTPException(409, f"action {action['id']} belongs to incident "
+                                 f"{action['incident_id']}, not {incident_id}")
+    request_id = str(body.get("request_id") or "").strip()[:64] or None
+    # Callers that predate the source field (scripts, older pages) keep their own label.
+    who = DECISION_SOURCES[source] if source else str(body.get("by") or "human (console)")[:80]
+    return {"source": source, "who": who, "note": str(body.get("note") or "")[:400],
+            "request_id": request_id, "client_time": str(body.get("client_time") or "")[:40] or None}
+
+
+def _already_decided(action_id: int, wanted: str, request_id: str | None) -> JSONResponse:
+    """The answer for a decision that arrived after another one.
+
+    A retry of the request that already won (same request_id, e.g. resent after a dropped
+    connection) gets 200 and the current state, so the client does not show a false failure and
+    nothing is done twice. Anything else gets 409 naming who decided first.
+    """
+    current = db.get_action(action_id) or {}
+    if request_id and current.get("decision_request_id") == request_id:
+        return JSONResponse({"action_id": action_id, "status": current.get("status"),
+                             "duplicate": True, "action": current,
+                             "detail": "this request was already recorded; nothing was done twice"})
+    status, by = current.get("status") or "unknown", current.get("decided_by")
+    return JSONResponse(status_code=409, content={
+        "detail": (f"this action is already '{status}'" + (f" by {by}" if by else "")
+                   + f", so it cannot be {wanted}"),
+        "action": current})
 
 
 @app.post("/actions/{action_id}/approve")
@@ -282,24 +422,31 @@ async def approve_action(action_id: int, request: Request):
     action = db.get_action(action_id)
     if not action:
         raise HTTPException(404, "no such action")
-    if action["status"] != "proposed":
-        # Not an error worth a 500, but it must not run twice. An action already executed, rejected
-        # or refused is final.
-        raise HTTPException(409, f"this action is '{action['status']}', so it cannot be approved")
-
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001 - an empty body is normal from a button
         body = {}
-    who = str(body.get("by") or "human (console)")[:80]
-    note = str(body.get("note") or "")[:400]
+    if not isinstance(body, dict):
+        body = {}
+    d = _decision_request(body, action)
+    if action["status"] != "proposed":
+        # Not an error worth a 500, but it must not run twice. An action already executed, rejected
+        # or refused is final.
+        return _already_decided(action_id, "approved", d["request_id"])
 
-    db.update_action(action_id, status="approved", decided_by=who, decided_at=db.now_iso(),
-                     decision_note=note)
+    # The real gate: one atomic update that succeeds only while the action is still 'proposed'.
+    # When the console and the mobile app approve at the same moment, exactly one of them gets
+    # past this line, so the action below runs once.
+    if not db.claim_action(action_id, status="approved", decided_by=d["who"],
+                           decided_at=db.now_iso(), decision_note=d["note"],
+                           decision_source=d["source"], decision_request_id=d["request_id"]):
+        return _already_decided(action_id, "approved", d["request_id"])
+    who, note = d["who"], d["note"]
     with events.investigating(action["incident_id"], "remediation", action["attempt"]):
         events.record("aira", "action_approved",
                       detail={"action": action["action"], "target": action["target_service"],
-                              "approved_by": who, "note": note})
+                              "approved_by": who, "source": d["source"], "note": note,
+                              "request_id": d["request_id"], "client_time": d["client_time"]})
     log.info("incident %s: action %s APPROVED by %s", action["incident_id"], action_id, who)
 
     proposal = remediation.Proposal(
@@ -351,11 +498,12 @@ async def approve_action(action_id: int, request: Request):
     superseded = 0
     for other in db.get_actions_pending_like(action["action"], action["target_service"],
                                              exclude_id=action_id):
-        db.update_action(other["id"], status="superseded", decided_at=db.now_iso(),
-                         decided_by="AIRA (automatic)",
-                         decision_note=(f"action {action_id} on incident "
-                                        f"{action['incident_id']} already did this"))
-        superseded += 1
+        # Conditional, so a proposal a person decided on in the meantime keeps their decision.
+        if db.claim_action(other["id"], status="superseded", decided_at=db.now_iso(),
+                           decided_by="AIRA (automatic)",
+                           decision_note=(f"action {action_id} on incident "
+                                          f"{action['incident_id']} already did this")):
+            superseded += 1
     if superseded:
         log.info("incident %s: action %s also superseded %d pending proposal(s) for the same remedy",
                  action["incident_id"], action_id, superseded)
@@ -393,21 +541,26 @@ async def reject_action(action_id: int, request: Request, background: Background
     action = db.get_action(action_id)
     if not action:
         raise HTTPException(404, "no such action")
-    if action["status"] != "proposed":
-        raise HTTPException(409, f"this action is '{action['status']}', so it cannot be rejected")
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
         body = {}
-    who = str(body.get("by") or "human (console)")[:80]
-    note = str(body.get("note") or "")[:400]
-
-    db.update_action(action_id, status="rejected", decided_by=who, decided_at=db.now_iso(),
-                     decision_note=note)
+    if not isinstance(body, dict):
+        body = {}
+    d = _decision_request(body, action)
+    if action["status"] != "proposed":
+        return _already_decided(action_id, "rejected", d["request_id"])
+    # Same single gate as approval: an Approve and a Reject arriving together cannot both land.
+    if not db.claim_action(action_id, status="rejected", decided_by=d["who"],
+                           decided_at=db.now_iso(), decision_note=d["note"],
+                           decision_source=d["source"], decision_request_id=d["request_id"]):
+        return _already_decided(action_id, "rejected", d["request_id"])
+    who, note = d["who"], d["note"]
     with events.investigating(action["incident_id"], "remediation", action["attempt"]):
         events.record("aira", "action_rejected", ok=False,
                       detail={"action": action["action"], "target": action["target_service"],
-                              "rejected_by": who, "note": note})
+                              "rejected_by": who, "source": d["source"], "note": note,
+                              "request_id": d["request_id"], "client_time": d["client_time"]})
     log.info("incident %s: action %s REJECTED by %s%s", action["incident_id"], action_id, who,
              f" ({note})" if note else "")
     if orchestrator is not None:
@@ -867,6 +1020,198 @@ async def dashboards():
     return {"dashboards": [{"title": d.get("title"), "uid": d.get("uid"),
                             "url": f"http://localhost:8080/grafana{d.get('url', '')}"}
                            for d in items]}
+
+
+# ---------------------------------------------------------------- data for the mobile app
+#
+# Read-only views over the same tables (appdata.py). They exist because GET /incidents cannot page,
+# filter or count, and sends every agent's full output for 100 incidents at once; a phone needs all
+# incidents, a page at a time, in a light form. Nothing here duplicates or caches an incident.
+
+@app.get("/api/summary")
+def api_summary():
+    """The dashboard's numbers, counted from the database now."""
+    return appdata.summary()
+
+
+@app.get("/api/incidents")
+def api_incidents(limit: int = 30, offset: int = 0, state: str | None = None,
+                  severity: str | None = None, q: str | None = None, since: str | None = None,
+                  sort: str = "active"):
+    """All incidents, a page at a time: light rows plus the total matching the filters."""
+    if state is not None and state not in appdata.STATES:
+        raise HTTPException(422, f"state must be one of {', '.join(appdata.STATES)}")
+    if sort not in appdata.SORTS:
+        raise HTTPException(422, f"sort must be one of {', '.join(appdata.SORTS)}")
+    items, total = appdata.list_incidents(limit, offset, state, severity, q, since, sort)
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@app.get("/api/incidents/{incident_id}/row")
+def api_incident_row(incident_id: int):
+    row = appdata.incident_row(incident_id)
+    if not row:
+        raise HTTPException(404, "incident not found")
+    return row
+
+
+@app.get("/api/approvals")
+def api_approvals():
+    """Every remediation awaiting a human decision, with the diagnosis behind it."""
+    return appdata.pending_approvals()
+
+
+@app.get("/api/activity")
+def api_activity(limit: int = 50, before: str | None = None):
+    """Notable events across all incidents, newest first, from the stored event trace."""
+    return appdata.activity(limit, before)
+
+
+@app.get("/api/stream")
+async def api_stream(request: Request):
+    """Server-Sent Events: which incidents changed, as they change (see live.py).
+
+    A connection lasts at most a few minutes and the browser reconnects by itself, sending the last
+    id it saw; this keeps a stalled proxy or a sleeping phone from holding a dead stream open.
+    """
+    last_id = request.headers.get("last-event-id") or request.query_params.get("last")
+    queue, backlog = live.HUB.subscribe(last_id)
+
+    async def stream():
+        try:
+            yield "retry: 2000\n\n"
+            hello = {"type": "hello", "boot": live.BOOT_ID, "seq": live.HUB.seq,
+                     "id": f"{live.BOOT_ID}:{live.HUB.seq}",
+                     "summary": await asyncio.to_thread(appdata.summary)}
+            yield live.frame(hello)
+            for m in backlog:
+                yield live.frame(m)
+            opened = time.monotonic()
+            while time.monotonic() - opened < 240:
+                if await request.is_disconnected():
+                    break
+                try:
+                    message = await asyncio.wait_for(queue.get(), timeout=15)
+                except asyncio.TimeoutError:
+                    # A named event rather than an SSE comment: comments are invisible to the page,
+                    # and the app needs to see the stream is alive to notice when it silently is not
+                    # (a phone that paused the app in the background).
+                    yield "event: ping\ndata: {}\n\n"
+                    continue
+                yield live.frame(message)
+        finally:
+            live.HUB.unsubscribe(queue)
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/client-config")
+def api_client_config(request: Request):
+    """What the app needs to know about this server: no secrets, only what is switched on."""
+    return {
+        "mode": config.MODE,
+        "auth_required": bool(config.ACCESS_TOKEN),
+        "signed_in": (not config.ACCESS_TOKEN) or _token_ok(request)
+                     or (config.TRUST_LOOPBACK and request.client is not None
+                         and request.client.host in ("127.0.0.1", "::1")),
+        "decision_label": DECISION_SOURCES["app"],
+        "push_available": True,
+        "secure_context_hint": request.url.scheme == "https"
+                               or (request.url.hostname or "") in ("localhost", "127.0.0.1"),
+        "boot": live.BOOT_ID,
+    }
+
+
+@app.get("/api/push/key")
+def api_push_key():
+    from . import webpush  # noqa: PLC0415
+
+    return {"public_key": webpush.public_key_b64()}
+
+
+@app.post("/api/push/subscribe")
+async def api_push_subscribe(request: Request):
+    """Store one device's push subscription (endpoint and keys from the browser's PushManager)."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "body is not JSON")
+    sub = body.get("subscription") if isinstance(body, dict) else None
+    keys = (sub or {}).get("keys") or {}
+    endpoint = str((sub or {}).get("endpoint") or "")
+    if not endpoint.startswith("https://") or not keys.get("p256dh") or not keys.get("auth"):
+        raise HTTPException(422, "a push subscription needs an https endpoint and p256dh/auth keys")
+    appdata.save_subscription(endpoint, str(keys["p256dh"]), str(keys["auth"]),
+                              request.headers.get("user-agent"))
+    return {"ok": True}
+
+
+@app.post("/api/push/unsubscribe")
+async def api_push_unsubscribe(request: Request):
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    endpoint = str((body or {}).get("endpoint") or "")
+    return {"ok": True, "removed": appdata.delete_subscription(endpoint) if endpoint else False}
+
+
+@app.post("/api/push/test")
+async def api_push_test(request: Request):
+    """Send one test notification to the device that asks (or report why it cannot)."""
+    from . import webpush  # noqa: PLC0415
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    endpoint = str((body or {}).get("endpoint") or "")
+    sub = next((s for s in appdata.subscriptions() if s["endpoint"] == endpoint), None)
+    if not sub:
+        raise HTTPException(404, "this device is not subscribed")
+    status = await webpush.send(sub, {"title": "AIRA notifications are on",
+                                      "body": "You will be told about new incidents, approvals "
+                                              "waiting and remediation results.",
+                                      "level": "info", "key": f"test-{int(time.time())}",
+                                      "url": "/app/#/settings"})
+    return {"ok": 200 <= status < 300, "push_service_status": status}
+
+
+# ---------------------------------------------------------------- the mobile app (PWA)
+#
+# Served from the repository's pwa/ folder at /app/. Its service worker is scoped to /app/, so it
+# can never intercept the console's pages. If the folder is absent these routes answer 404 and the
+# console is unaffected.
+
+_PWA_TYPES = {".js": "text/javascript", ".css": "text/css", ".html": "text/html",
+              ".png": "image/png", ".webmanifest": "application/manifest+json",
+              ".json": "application/json", ".svg": "image/svg+xml"}
+
+
+def _pwa_file(name: str, headers: dict | None = None) -> FileResponse:
+    root = config.PWA_DIR.resolve()
+    path = (root / name).resolve()
+    if root not in path.parents or not path.is_file() or path.suffix not in _PWA_TYPES:
+        raise HTTPException(404, "not found")
+    # no-cache = check with the server first, so an updated app reaches phones on the next load.
+    return FileResponse(path, media_type=_PWA_TYPES[path.suffix],
+                        headers={"Cache-Control": "no-cache", **(headers or {})})
+
+
+@app.get("/app")
+def app_root():
+    return Response(status_code=307, headers={"Location": "/app/"})
+
+
+@app.get("/app/")
+def app_index():
+    return _pwa_file("index.html")
+
+
+@app.get("/app/{name:path}")
+def app_asset(name: str):
+    return _pwa_file(name)
 
 
 # ---------------------------------------------------------------- pages
