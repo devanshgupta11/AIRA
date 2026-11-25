@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#10161D">
+<title>Offline · AIRA</title>
+<style>
+  /* Self-contained: shown exactly when nothing else could be loaded. */
+  html, body { margin: 0; height: 100%; background: #0B0F14; color: #F3F6FA;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif; }
+  main { min-height: 100%; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 24px; box-sizing: border-box; }
+  img { width: 72px; height: 72px; border-radius: 16px; margin-bottom: 18px; }
+  h1 { margin: 0 0 8px; font-size: 20px; }
+  p { margin: 0 0 22px; max-width: 34ch; font-size: 14px; line-height: 1.5; color: #9AA8B8; }
+  button { font: inherit; font-size: 14px; font-weight: 650; color: #06231F; background: #42D6C5;
+    border: 0; border-radius: 8px; padding: 12px 22px; min-height: 44px; }
+</style>
+</head>
+<body>
+<main>
+  <img src="/app/icons/icon-192.png" alt="">
+  <h1>AIRA is offline</h1>
+  <p>The AIRA backend could not be reached. Check your connection, or that AIRA is running.</p>
+  <button type="button" onclick="location.href='/app/'">Try again</button>
+</main>
+<script>window.addEventListener("online", () => { location.href = "/app/"; });</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "id": "/app/",
+  "name": "AIRA - Incident Response",
+  "short_name": "AIRA",
+  "description": "AIRA on your phone: every incident, the full investigation, and approval of remediation, in sync with the web console.",
+  "start_url": "/app/#/",
+  "scope": "/app/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0B0F14",
+  "theme_color": "#10161D",
+  "categories": ["developer", "productivity", "utilities"],
+  "icons": [
+    { "src": "/app/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/app/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/app/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Pending approvals", "short_name": "Approvals", "url": "/app/#/approvals",
+      "icons": [{ "src": "/app/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Incidents", "url": "/app/#/incidents",
+      "icons": [{ "src": "/app/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Activity", "url": "/app/#/activity",
+      "icons": [{ "src": "/app/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
