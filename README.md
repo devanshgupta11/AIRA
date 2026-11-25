@@ -239,11 +239,83 @@ If PowerShell blocks the scripts, run them as
 Scenarios: `high-cpu`, `cart-failure`, `payment-failure`, `product-catalog-failure`, `memory-leak`,
 `homepage-flood`, `service-down` (stops the `recommendation` container).
 
+`start-all.ps1` also starts a **watchdog** (`scripts\watchdog.ps1`) that checks the backend, the RCA
+agent, the MCP tools, Ollama and the monitoring containers every 15 s and restarts whatever stops
+answering (immediately if a process is gone, after a minute if it is running but silent).
+`stop-all.ps1` stops it first. Its log is `logs\watchdog.log`; `status.ps1` shows its latest repairs.
+
+## Mobile app (PWA)
+
+AIRA has an installable mobile app at **http://localhost:8000/app/**. It is a Progressive Web App
+served by the same backend as the console: same database, same approval endpoints, so the two can
+never disagree. Source: `pwa\` (no build step; plain HTML, CSS and ES modules).
+
+- **Dashboard** with live counts, system health, decisions waiting, recent incidents and activity.
+- **Incidents**: every incident, paged, with search (`#id`, service, alert), status / severity /
+  time filters and sorting.
+- **Incident detail**: diagnosis and ranked hypotheses, every agent's findings per round, the
+  Critic's verdict, measurements, raw evidence, each remediation with its execution progress
+  (approved by whom → safety re-check → executed → recovery verified → resolved), the execution
+  trace and the postmortem (with PDF download).
+- **Approvals**: approve or reject a remediation after a confirmation that names the exact action.
+- **Activity** and **Web Push notifications** (new/critical incident, approval waiting, results).
+
+**Approval is shared and atomic.** Console and app call the same `POST /actions/{id}/approve|reject`.
+The decision is claimed with a single conditional database update, so when both press at once
+exactly one wins and the action runs once; the other is told who decided. Decisions are recorded as
+`developer (console)` or `developer (app)`, with the incident id and a request id (a retry after a
+dropped connection is recognised, not run twice). Both screens update within about a second
+(Server-Sent Events on `/api/stream`, with the console's 3 s poll kept as a fallback). The existing
+safety layer is unchanged: allowlist, protected services, re-validation at execution time.
+
+**Run it on an Android phone (local, nothing exposed to the network):**
+
+```powershell
+# phone: Settings > About phone > tap Build number 7x; then Developer options > USB debugging on
+adb devices                      # the phone must be listed as "device"
+adb reverse tcp:8000 tcp:8000    # the phone's localhost:8000 now reaches this laptop
+```
+
+On the phone open **Chrome → http://localhost:8000/app/** → **Install** (Settings tab) or
+**⋮ → Install app / Add to Home screen**. `localhost` counts as a secure origin, so installing,
+offline mode and notifications all work without HTTPS. Unplugging the cable cancels `adb reverse`.
+
+**Other devices on the network / production.** The backend listens on 127.0.0.1 only. To serve
+other devices, set both variables before `start-all.ps1`; without a token the host is refused:
+
+```powershell
+$env:AIRA_ACCESS_TOKEN = '<a long random string>'   # every non-local request must carry it
+$env:AIRA_BIND_HOST    = '0.0.0.0'
+```
+
+Phones then sign in once (Settings tab, or the sign-in page the console shows). Installing the app
+and push notifications need **HTTPS** on any address other than localhost: put Caddy (or another
+reverse proxy with a certificate) in front of port 8000, and set `AIRA_TRUST_LOOPBACK=0` so traffic
+the proxy forwards is not treated as local.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AIRA_BIND_HOST` | `127.0.0.1` | where the backend listens (needs `AIRA_ACCESS_TOKEN` unless local) |
+| `AIRA_ACCESS_TOKEN` | unset | required from non-local clients when set (header, session cookie or `?token=`) |
+| `AIRA_TRUST_LOOPBACK` | `1` | `0` behind a reverse proxy on the same machine |
+| `AIRA_PWA_DIR` | `pwa\` | where the app's files are |
+| `AIRA_VAPID_SUBJECT` | `mailto:aira-admin@localhost` | contact sent to push services |
+
+The Web Push key pair is generated on first use in `backend\data\vapid_private.pem` (not in git).
+
+**Checks** (run against a scratch copy, they create test proposals that the safety layer refuses):
+
+```powershell
+backend\.venv\Scripts\python.exe scripts\pwa_check.py    --base http://127.0.0.1:8011 --db <copy>\aira.db   # API, approval races, SSE, access, push
+backend\.venv\Scripts\python.exe scripts\pwa_ui_check.py --base http://localhost:8011 --db <copy>\aira.db --out <folder>   # app + console in Chrome
+```
+
 ## URLs
 
 | What | URL |
 |---|---|
 | **AIRA Incident Console** | http://localhost:8000/ |
+| **AIRA mobile app (PWA)** | http://localhost:8000/app/ (phone: `adb reverse tcp:8000 tcp:8000`, then the same URL) |
 | AIRA API | http://localhost:8000/incidents · http://localhost:8000/health · http://localhost:8000/docs |
 | Astronomy Shop | http://localhost:8080/ |
 | Grafana | http://localhost:8080/grafana/ |
@@ -272,6 +344,11 @@ Scenarios: `high-cpu`, `cart-failure`, `payment-failure`, `product-catalog-failu
 | The console offers no Jaeger link, or `/health` says spans are being dropped | The otel-collector is not reachable. AIRA re-points itself within a minute of the collector moving port; if it stays down, investigations are unaffected and tracing resumes when it returns |
 | Every incident's RCA step errors | The RCA agent process is down. `status.ps1` says so; `start-all.ps1` starts it, or run `uvicorn app.agents.rca_server:app --port 8001` from `backend\`. The investigators still report normally without it |
 | First root-cause step after a cold start takes ~25 s longer | LiteLLM initialises once per process. `start-all.ps1` pays this up front; it only shows up if the RCA agent was started by hand |
+| Phone cannot open the app | Re-run `adb reverse tcp:8000 tcp:8000` (unplugging cancels it) and use `http://localhost:8000/app/`, not the laptop's IP |
+| No "Install" option on the phone | Installing needs a secure origin: `localhost` through adb, or HTTPS. Over plain `http://<ip>` the app works in the browser but cannot be installed |
+| App says "Offline" / decisions disabled | The backend is unreachable. The app shows its last data marked as possibly out of date and never sends a decision until it is back |
+| Notifications cannot be turned on | Needs HTTPS or localhost, and notification permission for the site. The Activity tab lists the same events without them |
+| App or console says "already approved by …" | Someone decided first on the other screen or another device; nothing ran twice. The screen updates to show the result |
 
 More detail: [docs/architecture-midsem.md](docs/architecture-midsem.md) ·
 [docs/demo-script.md](docs/demo-script.md) · [docs/environment-discovery.md](docs/environment-discovery.md) ·
